@@ -54,6 +54,11 @@ nonisolated struct CivilDate: Hashable, Sendable, Comparable {
     var sundayOnOrBefore: CivilDate {
         adding(days: 1 - weekday.rawValue)
     }
+
+    /// The coming Sunday. Today, when today is already Sunday.
+    var upcomingSunday: CivilDate {
+        adding(days: (8 - weekday.rawValue) % 7)
+    }
 }
 
 nonisolated enum Weekday: Int, Sendable {

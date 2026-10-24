@@ -11,16 +11,16 @@ struct RootView: View {
 
     var body: some View {
         @Bindable var navigation = navigation
-        NavigationStack(path: $navigation.path) {
-            Group {
-                if isWide {
-                    wideShell
-                } else {
+        Group {
+            if isWide {
+                wideShell(path: $navigation.path)
+            } else {
+                NavigationStack(path: $navigation.path) {
                     phoneTabs
+                        .toolbar(.hidden, for: .navigationBar)
+                        .navigationDestination(for: AppRoute.self, destination: RouteScreen.init)
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: AppRoute.self, destination: RouteScreen.init)
         }
         .sheet(isPresented: $showsMore, onDismiss: commitPendingRoute) {
             MoreSheet(onSelect: stage)
@@ -48,7 +48,7 @@ struct RootView: View {
         .tint(palette.primary.color)
     }
 
-    private var wideShell: some View {
+    private func wideShell(path: Binding<NavigationPath>) -> some View {
         VStack(spacing: 0) {
             TabletTopBar()
             HStack(spacing: 0) {
@@ -56,8 +56,12 @@ struct RootView: View {
                 Rectangle()
                     .fill(palette.border.color)
                     .frame(width: 1)
-                tabScreen
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                NavigationStack(path: path) {
+                    tabScreen
+                        .toolbar(.hidden, for: .navigationBar)
+                        .navigationDestination(for: AppRoute.self, destination: RouteScreen.init)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(palette.background.color)
@@ -107,5 +111,6 @@ struct RootView: View {
         .modelContainer(try! HymnStore.make(inMemory: true))
         .environment(DesignPreferences())
         .environment(AppNavigation())
+        .environment(ReadingsPreferences(defaults: UserDefaults(suiteName: "readings-preview") ?? .standard))
         .resolvePalette()
 }

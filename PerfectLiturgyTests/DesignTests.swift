@@ -57,6 +57,15 @@ import UIKit
     #expect(!LayoutSpan.isWide(width: 840, height: 599))
 }
 
+@Test func `a tablet stays at two columns`() {
+    #expect(LayoutSpan.isWide(width: 1366, height: 1024))
+    #expect(!LayoutSpan.splitsColumns(width: 1366, height: 1024))
+    #expect(LayoutSpan.isWide(width: 1024, height: 1366))
+    #expect(!LayoutSpan.splitsColumns(width: 1024, height: 1366))
+    #expect(LayoutSpan.splitsColumns(width: 1400, height: 900))
+    #expect(!LayoutSpan.splitsColumns(width: 1399, height: 900))
+}
+
 @Test func `system appearance follows the device`() {
     #expect(AppearanceMode.system.colorScheme == nil)
     #expect(AppearanceMode.light.colorScheme == .light)

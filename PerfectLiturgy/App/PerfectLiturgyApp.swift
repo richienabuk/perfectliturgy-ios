@@ -5,6 +5,7 @@ import SwiftUI
 struct PerfectLiturgyApp: App {
     @State private var design = DesignPreferences()
     @State private var navigation = AppNavigation()
+    @State private var readings = ReadingsPreferences()
 
     init() {
         AppFonts.register()
@@ -17,6 +18,7 @@ struct PerfectLiturgyApp: App {
                 .modelContainer(HymnStore.shared)
                 .environment(design)
                 .environment(navigation)
+                .environment(readings)
                 .environment(\.readingScale, design.readingScale)
                 .resolvePalette()
                 .preferredColorScheme(design.appearance.colorScheme)

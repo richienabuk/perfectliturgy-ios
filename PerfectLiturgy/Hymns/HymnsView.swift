@@ -8,7 +8,7 @@ struct HymnsView: View {
     }
 
     @Environment(\.palette) private var palette
-    @Environment(\.isWideLayout) private var isWide
+    @Environment(\.splitsColumns) private var splitsColumns
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.modelContext) private var modelContext
 
@@ -24,6 +24,8 @@ struct HymnsView: View {
     @State private var season: String?
     @State private var massPart: String?
     @State private var showsFilters = false
+    @State private var showsLanguages = false
+    @State private var openDownloadsAfterLanguage = false
     @State private var visibleCount = HymnFilter.pageSize
     @State private var selectedID: String?
     @State private var debounce: Task<Void, Never>?
@@ -31,7 +33,7 @@ struct HymnsView: View {
     var body: some View {
         VStack(spacing: 0) {
             PLTopBar()
-            if isWide {
+            if splitsColumns {
                 HStack(spacing: 0) {
                     listColumn
                     Rectangle()
@@ -49,11 +51,16 @@ struct HymnsView: View {
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showsFilters) {
             HymnFilterSheet(
-                language: $language,
                 season: $season,
-                massPart: $massPart,
-                languages: HymnLanguage.ordered(hymns.map(\.language)),
-                matchCount: filtered.count
+                massPart: $massPart
+            )
+        }
+        .sheet(isPresented: $showsLanguages, onDismiss: openDownloadsIfNeeded) {
+            HymnLanguageSheet(
+                languages: languages,
+                selected: activeLanguage,
+                onSelect: { language = $0 },
+                onDownload: { openDownloadsAfterLanguage = true }
             )
         }
         .onChange(of: language) { _, _ in visibleCount = HymnFilter.pageSize }
@@ -62,17 +69,18 @@ struct HymnsView: View {
     }
 
     private var listColumn: some View {
-        VStack(alignment: .leading, spacing: isWide ? 14 : 12) {
+        VStack(alignment: .leading, spacing: splitsColumns ? 14 : 12) {
             listHeader
+            languageButton
             searchField
-            if isWide {
+            if splitsColumns {
                 wideCountRow
             } else {
                 phoneCountRow
-                filterButton
             }
+            filterBar
             ScrollView {
-                LazyVStack(spacing: isWide ? 8 : 0) {
+                LazyVStack(spacing: splitsColumns ? 8 : 0) {
                     if filtered.isEmpty {
                         Text("No hymns match.")
                             .font(AppFont.body())
@@ -89,7 +97,7 @@ struct HymnsView: View {
                                 }
                         }
                     }
-                    if !isWide {
+                    if !splitsColumns {
                         Text("Search is limited to the hymn catalogue.")
                             .font(AppFont.interface(size: 12))
                             .foregroundStyle(palette.mutedForeground.color)
@@ -101,15 +109,15 @@ struct HymnsView: View {
                 .padding(.bottom, 24)
             }
         }
-        .padding(.horizontal, isWide ? 22 : 20)
-        .padding(.top, isWide ? 22 : 8)
-        .frame(maxWidth: isWide ? 440 : .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, splitsColumns ? 22 : 20)
+        .padding(.top, splitsColumns ? 22 : 8)
+        .frame(maxWidth: splitsColumns ? 440 : .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(palette.background.color)
     }
 
     private var listHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if isWide {
+            if splitsColumns {
                 Text("YOUR HYMN CATALOGUES")
                     .font(AppFont.eyebrow())
                     .tracking(AppFont.eyebrowTracking)
@@ -117,10 +125,10 @@ struct HymnsView: View {
             }
             HStack(alignment: .center, spacing: 8) {
                 Text("Hymns")
-                    .font(AppFont.heading(size: isWide ? 34 : 40))
+                    .font(AppFont.heading(size: splitsColumns ? 34 : 40))
                     .foregroundStyle(palette.foreground.color)
                 Spacer(minLength: 8)
-                if !isWide {
+                if !splitsColumns {
                     Button {
                         showsFilters = true
                     } label: {
@@ -133,10 +141,42 @@ struct HymnsView: View {
                     .accessibilityLabel("Filter hymns")
                 }
             }
-            Text(isWide ? "Search by number, title, or any text." : "Hymns · Search by number, title, or text.")
+            Text(splitsColumns ? "Search by number, title, or any text." : "Hymns · Search by number, title, or text.")
                 .font(AppFont.interface(size: 15))
                 .foregroundStyle(palette.mutedForeground.color)
         }
+    }
+
+    private var languageButton: some View {
+        Button {
+            showsLanguages = true
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "character.book.closed")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(palette.emphasis.color)
+                    .frame(width: 24, height: 24)
+                Text(languageButtonTitle)
+                    .font(AppFont.interface(size: 15, weight: .semibold))
+                    .foregroundStyle(palette.foreground.color)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(palette.emphasis.color)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: ControlMetrics.minimumHeight, alignment: .leading)
+            .background(palette.card.color, in: RoundedRectangle(cornerRadius: Radius.lg))
+            .overlay {
+                RoundedRectangle(cornerRadius: Radius.lg)
+                    .strokeBorder(palette.border.color, lineWidth: 1)
+            }
+        }
+        .buttonStyle(PressScaleButtonStyle())
+        .accessibilityLabel("Hymn language")
+        .accessibilityValue(languageButtonTitle)
     }
 
     private var phoneCountRow: some View {
@@ -158,16 +198,6 @@ struct HymnsView: View {
                 .tracking(AppFont.eyebrowTracking)
                 .foregroundStyle(palette.mutedForeground.color)
             Spacer(minLength: 8)
-            Button {
-                showsFilters = true
-            } label: {
-                Text("Filters")
-                    .font(AppFont.interface(size: 13, weight: .semibold))
-                    .foregroundStyle(filtersActive ? palette.primary.color : palette.mutedForeground.color)
-                    .frame(minHeight: ControlMetrics.minimumHeight)
-            }
-            .buttonStyle(PressScaleButtonStyle())
-            .accessibilityLabel("Filter hymns")
             Text(HymnLabels.itemCount(filtered.count))
                 .font(AppFont.interface(size: 13))
                 .foregroundStyle(palette.mutedForeground.color)
@@ -192,13 +222,13 @@ struct HymnsView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(palette.mutedForeground.color)
-            TextField(isWide ? "Number, title, or indexed text" : "Search hymn number, title, or text", text: $query)
+            TextField(splitsColumns ? "Number, title, or indexed text" : "Search hymn number, title, or text", text: $query)
                 .font(AppFont.interface(size: 15))
                 .foregroundStyle(palette.foreground.color)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
-            if isWide {
+            if splitsColumns {
                 Text(HymnLabels.resultCount(filtered.count))
                     .font(AppFont.interface(size: 13))
                     .foregroundStyle(palette.mutedForeground.color)
@@ -225,6 +255,56 @@ struct HymnsView: View {
         }
     }
 
+    private var filterBar: some View {
+        ViewThatFits(in: .horizontal) {
+            filterBarRow
+                .fixedSize(horizontal: true, vertical: false)
+            VStack(alignment: .leading, spacing: 8) {
+                filterButton
+                if filtersActive {
+                    chipRow
+                }
+            }
+        }
+    }
+
+    private var filterBarRow: some View {
+        HStack(spacing: 8) {
+            filterButton
+            if filtersActive {
+                chipRow
+            }
+        }
+    }
+
+    private var chipRow: some View {
+        HStack(spacing: 8) {
+            if let season {
+                activeFilterChip(HymnLabels.token(season)) { self.season = nil }
+            }
+            if let massPart {
+                activeFilterChip(HymnLabels.token(massPart)) { self.massPart = nil }
+            }
+        }
+    }
+
+    private func activeFilterChip(_ title: String, clear: @escaping () -> Void) -> some View {
+        Button(action: clear) {
+            HStack(spacing: 6) {
+                Text(title)
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .font(AppFont.interface(size: 14, weight: .semibold))
+            .foregroundStyle(palette.foreground.color)
+            .padding(.horizontal, 12)
+            .frame(minHeight: ControlMetrics.minimumHeight)
+            .background(palette.secondary.color, in: RoundedRectangle(cornerRadius: Radius.sm))
+        }
+        .buttonStyle(PressScaleButtonStyle())
+        .accessibilityLabel("Remove \(title)")
+    }
+
     private var filterButton: some View {
         Button {
             showsFilters = true
@@ -232,13 +312,13 @@ struct HymnsView: View {
             HStack(spacing: 8) {
                 Image(systemName: "line.3.horizontal.decrease")
                     .font(.system(size: 13, weight: .semibold))
-                Text("Filters")
+                Text(filtersActive ? "Filters · Active" : "Filters")
                     .font(AppFont.interface(size: 14, weight: .semibold))
             }
-            .foregroundStyle(filtersActive ? palette.primaryForeground.color : palette.foreground.color)
+            .foregroundStyle(palette.foreground.color)
             .padding(.horizontal, 14)
             .frame(minHeight: ControlMetrics.minimumHeight)
-            .background(filtersActive ? palette.primary.color : palette.secondary.color, in: RoundedRectangle(cornerRadius: Radius.sm))
+            .background(palette.secondary.color, in: RoundedRectangle(cornerRadius: Radius.sm))
         }
         .buttonStyle(PressScaleButtonStyle())
         .accessibilityLabel("Filter hymns")
@@ -246,13 +326,13 @@ struct HymnsView: View {
 
     private func row(_ hymn: HymnRecord) -> some View {
         let saved = savedIDs.contains(hymn.id)
-        let selected = isWide && hymn.id == activeID
+        let selected = splitsColumns && hymn.id == activeID
         return HStack(alignment: .center, spacing: 12) {
             Button {
                 open(hymn)
             } label: {
                 HStack(alignment: .center, spacing: 12) {
-                    if isWide {
+                    if splitsColumns {
                         musicMark
                         VStack(alignment: .leading, spacing: 3) {
                             Text(hymn.title)
@@ -292,8 +372,8 @@ struct HymnsView: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(palette.mutedForeground.color)
         }
-        .padding(.horizontal, isWide ? 10 : 0)
-        .padding(.vertical, isWide ? 10 : 12)
+        .padding(.horizontal, splitsColumns ? 10 : 0)
+        .padding(.vertical, splitsColumns ? 10 : 12)
         .background(selected ? palette.card.color : Color.clear, in: RoundedRectangle(cornerRadius: Radius.lg))
         .overlay {
             if selected {
@@ -302,7 +382,7 @@ struct HymnsView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if !isWide {
+            if !splitsColumns {
                 Rectangle()
                     .fill(palette.border.color)
                     .frame(height: 1)
@@ -353,8 +433,23 @@ struct HymnsView: View {
         HymnLabels.rowLine(language: hymn.language, seasons: hymn.seasons, massParts: hymn.massParts)
     }
 
+    private var languages: [String] {
+        HymnLanguage.ordered(hymns.map(\.language))
+    }
+
+    /// Nil shows every catalogue. A stored choice is kept only while that language is on the device.
+    private var activeLanguage: String? {
+        guard let language, languages.contains(language) else { return nil }
+        return language
+    }
+
+    private var languageButtonTitle: String {
+        guard let activeLanguage else { return "All languages" }
+        return HymnLanguage.name(for: activeLanguage)
+    }
+
     private var filter: HymnFilter {
-        HymnFilter(text: debouncedQuery, language: language, season: season, massPart: massPart)
+        HymnFilter(text: debouncedQuery, language: activeLanguage, season: season, massPart: massPart)
     }
 
     private var filtered: [HymnRecord] {
@@ -370,18 +465,24 @@ struct HymnsView: View {
     }
 
     private var filtersActive: Bool {
-        language != nil || season != nil || massPart != nil
+        season != nil || massPart != nil
+    }
+
+    private func openDownloadsIfNeeded() {
+        guard openDownloadsAfterLanguage else { return }
+        openDownloadsAfterLanguage = false
+        navigation.path.append(AppRoute.downloads)
     }
 
     private var activeID: String? {
         if let selectedID, filtered.contains(where: { $0.id == selectedID }) {
             return selectedID
         }
-        return isWide ? filtered.first?.id : nil
+        return splitsColumns ? filtered.first?.id : nil
     }
 
     private func open(_ hymn: HymnRecord) {
-        if isWide {
+        if splitsColumns {
             selectedID = hymn.id
         } else {
             navigation.path.append(AppRoute.hymn(id: hymn.id))

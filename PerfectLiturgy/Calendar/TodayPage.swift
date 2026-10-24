@@ -32,11 +32,20 @@ nonisolated enum TodayPageBuilder {
     }
 
     static func dateLine(for date: CivilDate) -> String {
+        formatted(date, "EEEE '·' d MMMM yyyy")
+    }
+
+    /// The date on the Readings card, as in "Sunday, 25 October 2026".
+    static func spokenDate(for date: CivilDate) -> String {
+        formatted(date, "EEEE, d MMMM yyyy")
+    }
+
+    private static func formatted(_ date: CivilDate, _ format: String) -> String {
         let formatter = DateFormatter()
         formatter.calendar = CivilDate.calendar
         formatter.locale = Locale(identifier: "en_GB")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "EEEE '·' d MMMM yyyy"
+        formatter.dateFormat = format
         return formatter.string(from: date.date)
     }
 }

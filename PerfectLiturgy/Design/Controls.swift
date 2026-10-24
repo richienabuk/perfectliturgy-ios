@@ -292,8 +292,33 @@ struct PLTopBar: View {
     var body: some View {
         if isWide && !showsBack {
             EmptyView()
+        } else if isWide {
+            backRow
         } else {
             bar
+        }
+    }
+
+    /// The tablet bar already carries the wordmark and account. A pushed screen only needs a way back.
+    private var backRow: some View {
+        HStack(spacing: 0) {
+            Button(action: { dismiss() }) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(minWidth: ControlMetrics.minimumHeight, minHeight: ControlMetrics.minimumHeight)
+            }
+            .buttonStyle(PressScaleButtonStyle())
+            .accessibilityLabel("Back")
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .foregroundStyle(palette.foreground.color)
+        .frame(minHeight: 52)
+        .background(palette.background.color)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(palette.border.color)
+                .frame(height: 1)
         }
     }
 
