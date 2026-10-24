@@ -48,6 +48,20 @@ struct PackClient {
         return try await fetch(url)
     }
 
+    func sync(packId: String, since: String) async throws -> Data {
+        let base = apiBase
+            .appending(path: "v1")
+            .appending(path: "packs")
+            .appending(path: packId)
+            .appending(path: "sync")
+        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
+            throw PackHTTPError.transport
+        }
+        components.queryItems = [URLQueryItem(name: "since", value: since)]
+        guard let url = components.url else { throw PackHTTPError.transport }
+        return try await fetch(url)
+    }
+
     private func fetchPage(_ page: Int) async throws -> PackListEnvelope {
         let base = apiBase.appending(path: "v1").appending(path: "packs")
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {

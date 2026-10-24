@@ -9,7 +9,7 @@ enum AccountCopy {
     static let signedInTitle = "Your Account"
     static let savedTitle = "Saved items"
     static let syncTitle = "Sync status"
-    static let syncStatus = "Ready to sync when connected."
+    static let syncStatus = "Update hymns and readings."
     static let magicLinkSent = "Check your email for a sign-in link."
     static let appleUnavailable = "Sign in with Apple is not available yet."
     static let signInFailed = "Sign-in did not finish. Try again."
@@ -329,7 +329,7 @@ final class AppSession {
             try apply(ConfirmedSession(token: confirmed.token, profile: profile), method: method)
             pendingMethod = nil
             do {
-                try await syncBookmarks(client: client, context: context)
+                try await mergeBookmarks(client: client, context: context)
             } catch {
                 notice = AccountCopy.bookmarksKept
             }
@@ -349,7 +349,7 @@ final class AppSession {
         cache.save(profile: session.profile, method: method)
     }
 
-    private func syncBookmarks(client: AuthClient, context: ModelContext) async throws {
+    func mergeBookmarks(client: AuthClient, context: ModelContext) async throws {
         guard let token, !token.isEmpty else { return }
         let local = try context.fetch(FetchDescriptor<HymnBookmark>())
         let pushed = try await client.pushBookmarks(BookmarkSync.payload(from: local), bearer: token)

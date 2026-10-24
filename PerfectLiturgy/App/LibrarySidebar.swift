@@ -18,6 +18,7 @@ struct TabletTopBar: View {
                 }
             }
             Spacer(minLength: 12)
+            SyncHeaderButton()
             Button(action: navigation.showAccount) {
                 Image(systemName: "person.crop.circle")
                     .font(.system(size: 22))
@@ -122,7 +123,7 @@ struct LibrarySidebar: View {
                 navigation.path = NavigationPath()
                 navigation.tab = tab
             } else if let route = row.route {
-                open(route)
+                navigation.open(route)
             }
         } label: {
             HStack(spacing: 10) {
@@ -148,7 +149,7 @@ struct LibrarySidebar: View {
     }
 
     private func open(_ route: AppRoute) {
-        navigation.path.append(route)
+        navigation.open(route)
     }
 }
 

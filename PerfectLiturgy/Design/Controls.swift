@@ -357,6 +357,7 @@ struct PLTopBar: View {
             .accessibilityLabel("PerfectLiturgy")
             .accessibilityHint("Returns to Today")
             Spacer(minLength: 8)
+            SyncHeaderButton()
             Button(action: navigation.showAccount) {
                 Image(systemName: "person.crop.circle")
                     .font(.system(size: 22))
@@ -369,10 +370,26 @@ struct PLTopBar: View {
         .foregroundStyle(palette.foreground.color)
         .frame(minHeight: 52)
         .background(palette.background.color)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(palette.border.color)
-                .frame(height: 1)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(palette.border.color)
+                    .frame(height: 1)
+            }
+    }
+}
+
+struct SyncHeaderButton: View {
+    @Environment(AppNavigation.self) private var navigation
+
+    var body: some View {
+        Button(action: navigation.requestSync) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 20, weight: .semibold))
+                .frame(minWidth: ControlMetrics.minimumHeight, minHeight: ControlMetrics.minimumHeight)
+                .opacity(navigation.isSyncing ? 0.45 : 1)
         }
+        .buttonStyle(PressScaleButtonStyle())
+        .accessibilityLabel("Sync")
+        .accessibilityIdentifier("header.sync")
     }
 }

@@ -25,6 +25,27 @@ struct RootView: View {
         .sheet(isPresented: $showsMore, onDismiss: commitPendingRoute) {
             MoreSheet(onSelect: stage)
         }
+        .sheet(isPresented: syncPresented) {
+            SyncSheet()
+                .environment(SyncController.shared)
+                .resolvePalette()
+        }
+        .sheet(item: noticePresented) { notice in
+            NoticeSheet(notice: notice)
+                .resolvePalette()
+        }
+        .fullScreenCover(isPresented: safariPresented) {
+            if let url = navigation.safariURL {
+                SafariPage(url: url)
+                    .ignoresSafeArea()
+            }
+        }
+        .onChange(of: navigation.syncRequest) { _, _ in
+            Task { await SyncController.shared.requestManual() }
+        }
+        .onChange(of: SyncController.shared.phase) { _, phase in
+            navigation.isSyncing = phase == .working
+        }
     }
 
     private var phoneTabs: some View {
@@ -101,8 +122,29 @@ struct RootView: View {
 
     private func commitPendingRoute() {
         guard let pendingRoute else { return }
-        navigation.path.append(pendingRoute)
+        navigation.open(pendingRoute)
         self.pendingRoute = nil
+    }
+
+    private var syncPresented: Binding<Bool> {
+        Binding(
+            get: { SyncController.shared.showsSheet },
+            set: { SyncController.shared.showsSheet = $0 }
+        )
+    }
+
+    private var noticePresented: Binding<ParishNotice?> {
+        Binding(
+            get: { NoticeCenter.shared.presented },
+            set: { NoticeCenter.shared.presented = $0 }
+        )
+    }
+
+    private var safariPresented: Binding<Bool> {
+        Binding(
+            get: { navigation.safariURL != nil },
+            set: { if !$0 { navigation.safariURL = nil } }
+        )
     }
 }
 

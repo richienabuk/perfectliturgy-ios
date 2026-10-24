@@ -17,6 +17,26 @@ enum BibleLibrary {
         into context: ModelContext,
         anchor: CivilDate
     ) throws {
+        try apply(data, pack: pack, into: context, anchor: anchor, replace: true)
+    }
+
+    /// A sync delta. Rows in the payload are updated or removed. Verses the payload does not mention stay.
+    static func applyDelta(
+        _ data: Data,
+        pack: PackRecord,
+        into context: ModelContext,
+        anchor: CivilDate
+    ) throws {
+        try apply(data, pack: pack, into: context, anchor: anchor, replace: false)
+    }
+
+    private static func apply(
+        _ data: Data,
+        pack: PackRecord,
+        into context: ModelContext,
+        anchor: CivilDate,
+        replace: Bool
+    ) throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let envelope: ReadingsBody
@@ -25,6 +45,7 @@ enum BibleLibrary {
         } catch {
             throw PackHTTPError.transport
         }
+        if !replace, envelope.data.isEmpty { return }
         let window = VerseWindow.normalized(envelope.metadata?.displayWindow ?? pack.metadata?.displayWindow)
         let translation = translationID(for: pack.packId)
         var index = Dictionary(uniqueKeysWithValues: try verses(translation: translation, in: context).map { ($0.id, $0) })
@@ -65,8 +86,10 @@ enum BibleLibrary {
             }
             retained.insert(key)
         }
-        for (key, existing) in index where !retained.contains(key) {
-            context.delete(existing)
+        if replace {
+            for (key, existing) in index where !retained.contains(key) {
+                context.delete(existing)
+            }
         }
 
         if let version = try version(id: translation, in: context) {

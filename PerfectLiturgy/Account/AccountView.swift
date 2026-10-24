@@ -9,6 +9,7 @@ struct AccountView: View {
 
     @Query private var bookmarks: [HymnBookmark]
     @State private var email = ""
+    @FocusState private var emailFocused: Bool
 
     private var client: AuthClient { .live }
 
@@ -64,66 +65,10 @@ struct AccountView: View {
                         .foregroundStyle(palette.foreground.color)
                 }
                 emailDivider
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Email address")
-                        .font(AppFont.interface(size: 16, weight: .semibold))
-                        .foregroundStyle(palette.foreground.color)
-                    ZStack(alignment: .leading) {
-                        if email.isEmpty {
-                            Text("you@example.com")
-                                .font(AppFont.interface(size: 16))
-                                .foregroundStyle(palette.mutedForeground.color)
-                                .padding(.horizontal, 14)
-                                .allowsHitTesting(false)
-                                .accessibilityHidden(true)
-                        }
-                        TextField("", text: $email)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.emailAddress)
-                            .textContentType(.emailAddress)
-                            .autocorrectionDisabled()
-                            .submitLabel(.go)
-                            .font(AppFont.interface(size: 16))
-                            .foregroundStyle(palette.foreground.color)
-                            .tint(palette.primary.color)
-                            .padding(.horizontal, 14)
-                            .frame(maxWidth: .infinity, minHeight: ControlMetrics.minimumHeight, alignment: .leading)
-                            .accessibilityLabel("Email address")
-                            .accessibilityIdentifier("account.email")
-                            .onSubmit { Task { await sendLink() } }
-                    }
-                    .background(palette.background.color, in: RoundedRectangle(cornerRadius: Radius.md))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: Radius.md)
-                            .strokeBorder(palette.input.color, lineWidth: 1)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    Task { await sendLink() }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "envelope")
-                            .font(.system(size: 15, weight: .semibold))
-                        Text("Email me a sign-in link")
-                            .font(AppFont.interface(size: 16, weight: .semibold))
-                    }
-                    .foregroundStyle(palette.primaryForeground.color)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: ControlMetrics.minimumHeight)
-                    .background(palette.primary.color, in: RoundedRectangle(cornerRadius: Radius.md))
-                }
-                .buttonStyle(PressScaleButtonStyle())
-                .disabled(session.isWorking)
-                .opacity(session.isWorking ? 0.4 : 1)
-                .accessibilityIdentifier("account.magicLink")
-                if let notice = session.notice {
-                    Text(notice)
-                        .font(AppFont.body(size: 13))
-                        .foregroundStyle(notice == AccountCopy.magicLinkSent ? palette.mutedForeground.color : palette.emphasis.color)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("account.notice")
+                if session.notice == AccountCopy.magicLinkSent {
+                    sentLink
+                } else {
+                    emailEntry
                 }
             }
         }
@@ -200,24 +145,119 @@ struct AccountView: View {
             }
             .buttonStyle(PressScaleButtonStyle())
             .accessibilityIdentifier("account.saved")
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(AccountCopy.syncTitle)
-                        .font(AppFont.interface(size: 16, weight: .semibold))
-                        .foregroundStyle(palette.foreground.color)
-                    Text(AccountCopy.syncStatus)
-                        .font(AppFont.body(size: 14))
+            Button {
+                navigation.requestSync()
+            } label: {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(AccountCopy.syncTitle)
+                            .font(AppFont.interface(size: 16, weight: .semibold))
+                            .foregroundStyle(palette.foreground.color)
+                        Text(AccountCopy.syncStatus)
+                            .font(AppFont.body(size: 14))
+                            .foregroundStyle(palette.mutedForeground.color)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(palette.mutedForeground.color)
                 }
-                Spacer(minLength: 8)
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(palette.mutedForeground.color)
-                    .accessibilityHidden(true)
+                .frame(minHeight: ControlMetrics.minimumHeight)
             }
-            .frame(minHeight: ControlMetrics.minimumHeight)
-            .accessibilityElement(children: .combine)
+            .buttonStyle(PressScaleButtonStyle())
+            .accessibilityIdentifier("account.sync")
         }
+    }
+
+    private var sentLink: some View {
+        VStack(spacing: 12) {
+            Text(AccountCopy.magicLinkSent)
+                .font(AppFont.body(size: 16))
+                .foregroundStyle(palette.foreground.color)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("account.notice")
+            Button {
+                session.notice = nil
+                emailFocused = true
+            } label: {
+                Text("Use a different email")
+                    .font(AppFont.interface(size: 16, weight: .semibold))
+                    .foregroundStyle(palette.primary.color)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: ControlMetrics.minimumHeight)
+            }
+            .buttonStyle(PressScaleButtonStyle())
+            .accessibilityIdentifier("account.magicLinkAgain")
+        }
+    }
+
+    private var emailEntry: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Email address")
+                .font(AppFont.interface(size: 16, weight: .semibold))
+                .foregroundStyle(palette.foreground.color)
+            ZStack(alignment: .leading) {
+                if email.isEmpty {
+                    Text("you@example.com")
+                        .font(AppFont.interface(size: 16))
+                        .foregroundStyle(palette.mutedForeground.color)
+                        .padding(.horizontal, 14)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+                TextField("", text: $email)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
+                    .autocorrectionDisabled()
+                    .submitLabel(.go)
+                    .focused($emailFocused)
+                    .font(AppFont.interface(size: 16))
+                    .foregroundStyle(palette.foreground.color)
+                    .tint(palette.primary.color)
+                    .padding(.horizontal, 14)
+                    .frame(maxWidth: .infinity, minHeight: ControlMetrics.minimumHeight, alignment: .leading)
+                    .accessibilityLabel("Email address")
+                    .accessibilityIdentifier("account.email")
+                    .onSubmit { Task { await sendLink() } }
+            }
+            .background(palette.background.color, in: RoundedRectangle(cornerRadius: Radius.md))
+            .overlay {
+                RoundedRectangle(cornerRadius: Radius.md)
+                    .strokeBorder(palette.input.color, lineWidth: 1)
+            }
+            Button {
+                Task { await sendLink() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "envelope")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("Email me a sign-in link")
+                        .font(AppFont.interface(size: 16, weight: .semibold))
+                }
+                .foregroundStyle(palette.primaryForeground.color)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: ControlMetrics.minimumHeight)
+                .background(palette.primary.color, in: RoundedRectangle(cornerRadius: Radius.md))
+            }
+            .buttonStyle(PressScaleButtonStyle())
+            .disabled(session.isWorking)
+            .opacity(session.isWorking ? 0.4 : 1)
+            .accessibilityIdentifier("account.magicLink")
+            .padding(.top, 8)
+            if let notice = session.notice {
+                Text(notice)
+                    .font(AppFont.body(size: 13))
+                    .foregroundStyle(palette.emphasis.color)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("account.notice")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var emailDivider: some View {
@@ -309,6 +349,7 @@ struct AccountView: View {
     }
 
     private func sendLink() async {
+        emailFocused = false
         await session.sendMagicLink(email: email, client: client)
     }
 }

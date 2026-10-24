@@ -2,6 +2,9 @@ import SwiftUI
 
 struct DonateView: View {
     var body: some View {
-        PlaceholderPage(title: "Donate", note: "perfectliturgy.com/donate")
+        SafariPage(url: WebLink.donate)
+            .ignoresSafeArea()
+            .navigationTitle("Donate")
+            .toolbar(.hidden, for: .navigationBar)
     }
 }
