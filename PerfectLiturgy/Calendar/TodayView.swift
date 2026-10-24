@@ -63,11 +63,6 @@ struct TodayView: View {
                 }
             }
             .padding(.horizontal, isWide ? 4 : 0)
-            Text("Community reference index · check the approved local lectionary.")
-                .font(AppFont.interface(size: 13))
-                .foregroundStyle(palette.mutedForeground.color)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 8)
         }
     }
 

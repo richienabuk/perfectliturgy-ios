@@ -1,11 +1,9 @@
-import SwiftData
 import SwiftUI
 
 /// Wide-screen chrome. The phone keeps the tab bar.
 struct TabletTopBar: View {
     @Environment(\.palette) private var palette
     @Environment(AppNavigation.self) private var navigation
-    @Query private var hymns: [HymnRecord]
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
@@ -20,32 +18,10 @@ struct TabletTopBar: View {
                 }
             }
             Spacer(minLength: 12)
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(palette.primary.color)
-                    .frame(width: 7, height: 7)
-                Text(statusLine)
-                    .font(AppFont.interface(size: 13))
-                    .foregroundStyle(palette.mutedForeground.color)
-                    .lineLimit(1)
-            }
             Button(action: navigation.showAccount) {
-                HStack(spacing: 8) {
-                    Image(systemName: "person.crop.circle")
-                        .font(.system(size: 16))
-                    Text("My account")
-                        .font(AppFont.interface(size: 14, weight: .semibold))
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
-                }
-                .foregroundStyle(palette.foreground.color)
-                .padding(.horizontal, 12)
-                .frame(minHeight: ControlMetrics.minimumHeight)
-                .background(palette.card.color, in: RoundedRectangle(cornerRadius: Radius.md))
-                .overlay {
-                    RoundedRectangle(cornerRadius: Radius.md)
-                        .strokeBorder(palette.border.color, lineWidth: 1)
-                }
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 22))
+                    .frame(minWidth: ControlMetrics.minimumHeight, minHeight: ControlMetrics.minimumHeight)
             }
             .buttonStyle(PressScaleButtonStyle())
             .accessibilityLabel("Account")
@@ -56,12 +32,6 @@ struct TabletTopBar: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(palette.border.color).frame(height: 1)
         }
-    }
-
-    private var statusLine: String {
-        let names = HymnLanguage.ordered(hymns.map(\.language)).map(HymnLanguage.name)
-        guard !names.isEmpty else { return "Offline-ready" }
-        return "\(names.joined(separator: " and ")) · Offline-ready"
     }
 }
 
