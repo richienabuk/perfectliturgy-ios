@@ -83,6 +83,30 @@ import UIKit
     #expect(AccountEmail.isValid("ada@example.com"))
 }
 
+@Test func `a sent magic link asks the reader to check email and does not sign in`() async throws {
+    let base = URL(string: "https://api.example.test")!
+    let sent = AuthScript()
+    sent.enqueue(status: 200, body: Data())
+    let defaults = try #require(UserDefaults(suiteName: "magic-sent-\(UUID().uuidString)"))
+    let session = AppSession(token: nil, store: MemorySessionStore(), defaults: defaults)
+    await session.sendMagicLink(
+        email: "ada@example.com",
+        client: AuthClient(transport: sent, authBase: base, apiBase: base)
+    )
+    #expect(session.notice == AccountCopy.magicLinkSent)
+    #expect(!session.isSignedIn)
+
+    let refused = AuthScript()
+    refused.enqueue(status: 400, body: Data(#"{"message":"Invalid email address"}"#.utf8))
+    let failed = AppSession(token: nil, store: MemorySessionStore(), defaults: defaults)
+    await failed.sendMagicLink(
+        email: "ada@example.com",
+        client: AuthClient(transport: refused, authBase: base, apiBase: base)
+    )
+    #expect(failed.notice == AccountCopy.connection)
+    #expect(!failed.isSignedIn)
+}
+
 @Test func `apple is stored only when the server returns a session`() async throws {
     let base = URL(string: "https://api.example.test")!
     let refused = AuthScript()
