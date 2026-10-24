@@ -7,6 +7,7 @@ struct PerfectLiturgyApp: App {
     @State private var navigation = AppNavigation()
     @State private var readings = ReadingsPreferences()
     @State private var packs = InstalledPacks()
+    @State private var devotions = DevotionSession()
 
     init() {
         AppFonts.register()
@@ -21,6 +22,7 @@ struct PerfectLiturgyApp: App {
                 .environment(navigation)
                 .environment(readings)
                 .environment(packs)
+                .environment(devotions)
                 .environment(\.readingScale, design.readingScale)
                 .resolvePalette()
                 .preferredColorScheme(design.appearance.colorScheme)

@@ -10,6 +10,6 @@ Open `PerfectLiturgy.xcodeproj` in Xcode and run the **PerfectLiturgy** scheme. 
 | :--- | :--- |
 | `PerfectLiturgy/` | App source, grouped by area |
 | `PerfectLiturgyTests/` | Unit tests |
-| `tmp/` | Build brief, design, and glossary for this checkout |
+| `docs/` | Product spec, design, and glossary |
 
-The tabs are Today, Readings, Hymns, Saved, and More. More is a sheet. Phase 0 is the shell: each screen is a placeholder. Later phases are listed in `tmp/mobile-app-brief-v2.md`.
+The tabs are Today, Readings, Hymns, Saved, and More. More is a sheet. Phase 0 is the shell: each screen is a placeholder. Later phases are listed in `docs/mobile-app-brief.md`.

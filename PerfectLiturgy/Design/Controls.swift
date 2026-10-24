@@ -24,6 +24,8 @@ struct PLButton: View {
 
     let title: String
     var kind: Kind = .primary
+    var trailingSystemImage: String? = nil
+    var isEnabled: Bool = true
     let action: () -> Void
 
     @Environment(\.palette) private var palette
@@ -43,8 +45,18 @@ struct PLButton: View {
                             .strokeBorder(palette.border.color, lineWidth: 1)
                     }
                 }
+                .overlay(alignment: .trailing) {
+                    if let trailingSystemImage {
+                        Image(systemName: trailingSystemImage)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(foreground)
+                            .padding(.trailing, 16)
+                    }
+                }
         }
         .buttonStyle(PressScaleButtonStyle())
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.4)
     }
 
     private var background: Color {
@@ -244,6 +256,7 @@ private nonisolated struct ArchOutline: Shape {
 struct ReadingText: View {
     let text: String
     var role: ReadingRole
+    var tint: Color? = nil
 
     @Environment(\.palette) private var palette
     @Environment(\.readingScale) private var readingScale
@@ -252,7 +265,7 @@ struct ReadingText: View {
         let size = readingScale.size(for: role)
         Text(text)
             .font(font(size: size))
-            .foregroundStyle(palette.foreground.color)
+            .foregroundStyle(tint ?? palette.foreground.color)
             .lineSpacing(extraLeading(size: size))
             .fixedSize(horizontal: false, vertical: true)
     }

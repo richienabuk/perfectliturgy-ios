@@ -1,0 +1,24 @@
+{
+  "pack_id": "prayers-en",
+  "type": "prayers",
+  "language": "en",
+  "revision": "2026-10-01T12:00:00.000Z",
+  "data": [
+    {
+      "order": 2,
+      "id": "test-two",
+      "title": "Test prayer two",
+      "summary": "Daily life",
+      "category": "Daily life",
+      "text": "Test prayer one\nA second test line"
+    },
+    {
+      "order": 1,
+      "id": "test-one",
+      "title": "Test prayer one",
+      "summary": "Essential prayers",
+      "category": "Essential prayers",
+      "text": "Test prayer one"
+    }
+  ]
+}

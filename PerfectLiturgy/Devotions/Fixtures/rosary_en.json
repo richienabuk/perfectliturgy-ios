@@ -1,0 +1,132 @@
+{
+  "pack_id": "rosary-en",
+  "type": "rosary",
+  "language": "en",
+  "revision": "2026-10-01T12:00:00.000Z",
+  "data": {
+    "prayers": {
+      "sign": "Test sign.",
+      "creed": "Test creed.",
+      "our_father": "Test our father.",
+      "hail_mary": "Test hail mary.",
+      "glory_be": "Test glory.",
+      "fatima": "Test fatima.",
+      "hail_holy_queen": "Test hail holy queen.",
+      "closing": "Test closing."
+    },
+    "mysteries": [
+      {
+        "order": 1,
+        "id": "joyful",
+        "title": "Joyful",
+        "days": "Monday and Saturday",
+        "titles": [
+          {
+            "order": 1,
+            "title": "The Annunciation"
+          },
+          {
+            "order": 2,
+            "title": "The Visitation"
+          },
+          {
+            "order": 3,
+            "title": "The Nativity"
+          },
+          {
+            "order": 4,
+            "title": "The Presentation"
+          },
+          {
+            "order": 5,
+            "title": "The Finding"
+          }
+        ]
+      },
+      {
+        "order": 2,
+        "id": "luminous",
+        "title": "Luminous",
+        "days": "Thursday",
+        "titles": [
+          {
+            "order": 1,
+            "title": "The Annunciation"
+          },
+          {
+            "order": 2,
+            "title": "The Visitation"
+          },
+          {
+            "order": 3,
+            "title": "The Nativity"
+          },
+          {
+            "order": 4,
+            "title": "The Presentation"
+          },
+          {
+            "order": 5,
+            "title": "The Finding"
+          }
+        ]
+      },
+      {
+        "order": 3,
+        "id": "sorrowful",
+        "title": "Sorrowful",
+        "days": "Tuesday and Friday",
+        "titles": [
+          {
+            "order": 1,
+            "title": "The Annunciation"
+          },
+          {
+            "order": 2,
+            "title": "The Visitation"
+          },
+          {
+            "order": 3,
+            "title": "The Nativity"
+          },
+          {
+            "order": 4,
+            "title": "The Presentation"
+          },
+          {
+            "order": 5,
+            "title": "The Finding"
+          }
+        ]
+      },
+      {
+        "order": 4,
+        "id": "glorious",
+        "title": "Glorious",
+        "days": "Wednesday and Sunday",
+        "titles": [
+          {
+            "order": 1,
+            "title": "The Annunciation"
+          },
+          {
+            "order": 2,
+            "title": "The Visitation"
+          },
+          {
+            "order": 3,
+            "title": "The Nativity"
+          },
+          {
+            "order": 4,
+            "title": "The Presentation"
+          },
+          {
+            "order": 5,
+            "title": "The Finding"
+          }
+        ]
+      }
+    ]
+  }
+}

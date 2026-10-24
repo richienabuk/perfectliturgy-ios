@@ -112,6 +112,7 @@ struct RootView: View {
         .environment(DesignPreferences())
         .environment(AppNavigation())
         .environment(InstalledPacks(defaults: UserDefaults(suiteName: "root-preview") ?? .standard))
+        .environment(DevotionSession())
         .environment(ReadingsPreferences(defaults: UserDefaults(suiteName: "readings-preview") ?? .standard))
         .resolvePalette()
 }

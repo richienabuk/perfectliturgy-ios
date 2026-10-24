@@ -13,6 +13,8 @@ enum ContentPack {
         "stations-la",
         "prayers-en",
         "prayers-la",
+        "litanies-en",
+        "litanies-la",
     ]
 
     static func hymnID(for language: String) -> String {
@@ -39,6 +41,17 @@ final class InstalledPacks {
 
     func contains(_ id: String) -> Bool {
         ids.contains(id)
+    }
+
+    /// Installed languages for one devotion, English and Latin first.
+    func languages(for kind: DevotionKind) -> [String] {
+        let prefix = "\(kind.rawValue)-"
+        let codes = ids.compactMap { id -> String? in
+            guard id.hasPrefix(prefix) else { return nil }
+            let code = String(id.dropFirst(prefix.count))
+            return code.isEmpty ? nil : code
+        }
+        return HymnLanguage.ordered(codes)
     }
 
     func remove(_ id: String) {

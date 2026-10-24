@@ -283,7 +283,7 @@ struct HymnLanguageSheet: View {
     }
 }
 
-private struct SheetHeightKey: PreferenceKey {
+struct SheetHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -291,13 +291,13 @@ private struct SheetHeightKey: PreferenceKey {
     }
 }
 
-private extension View {
+extension View {
     func fittedBottomSheet(height: Binding<CGFloat>) -> some View {
         modifier(FittedBottomSheet(height: height))
     }
 }
 
-private struct FittedBottomSheet: ViewModifier {
+struct FittedBottomSheet: ViewModifier {
     @Binding var height: CGFloat
     @Environment(\.palette) private var palette
 

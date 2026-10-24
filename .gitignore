@@ -8,3 +8,6 @@ tmp/
 
 # Production hymn catalogues. Fixture hymns stay in git.
 PerfectLiturgy/Hymns/Catalogues/
+
+# Production devotion texts. Fixture packs stay in git.
+PerfectLiturgy/Devotions/Catalogues/
