@@ -3,48 +3,60 @@ import SwiftUI
 struct MoreSheet: View {
     let onSelect: (AppRoute) -> Void
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         NavigationStack {
             List {
                 Section {
                     Mark(height: 56)
                         .frame(maxWidth: .infinity)
-                        .listRowBackground(Color.clear)
+                        .listRowBackground(palette.background.color)
                 }
                 ForEach(MoreMenu.sections) { section in
-                    Section(section.title) {
+                    Section {
                         ForEach(section.rows) { row in
                             Button {
                                 onSelect(row.route)
                             } label: {
                                 HStack(alignment: .center, spacing: 12) {
                                     Image(systemName: row.systemImage)
+                                        .font(.system(size: 18))
                                         .frame(width: 24)
-                                        .foregroundStyle(Color("plPrimary"))
-                                    VStack(alignment: .leading, spacing: 2) {
+                                        .foregroundStyle(palette.primary.color)
+                                    VStack(alignment: .leading, spacing: 4) {
                                         Text(row.title)
-                                            .foregroundStyle(Color("plForeground"))
+                                            .font(AppFont.interface(size: 16, weight: .semibold))
+                                            .foregroundStyle(palette.foreground.color)
                                         Text(row.subtitle)
-                                            .font(.subheadline)
-                                            .foregroundStyle(Color("plMutedForeground"))
+                                            .font(AppFont.body(size: 14))
+                                            .foregroundStyle(palette.mutedForeground.color)
                                             .multilineTextAlignment(.leading)
                                     }
                                 }
-                                .frame(minHeight: 44)
+                                .frame(minHeight: ControlMetrics.minimumHeight)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PressScaleButtonStyle())
+                            .listRowBackground(palette.background.color)
                         }
+                    } header: {
+                        Text(section.title)
+                            .font(AppFont.interface(size: 13, weight: .semibold))
+                            .foregroundStyle(palette.mutedForeground.color)
+                            .textCase(nil)
                     }
                 }
             }
+            .listStyle(.plain)
+            .listRowSeparatorTint(palette.border.color)
             .navigationTitle("More")
             .navigationBarTitleDisplayMode(.inline)
             .scrollContentBackground(.hidden)
-            .background(Color("plBackground"))
+            .background(palette.background.color)
         }
-        .tint(Color("plPrimary"))
+        .tint(palette.primary.color)
         .presentationDragIndicator(.visible)
-        .presentationCornerRadius(18)
-        .presentationBackground(Color("plBackground"))
+        .presentationCornerRadius(Radius.sheet)
+        .presentationBackground(palette.background.color)
     }
 }

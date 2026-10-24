@@ -1,34 +1,25 @@
+import SwiftData
 import SwiftUI
 
 struct RootView: View {
-    @State private var tab = AppTab.today
-    @State private var path = NavigationPath()
+    @Environment(AppNavigation.self) private var navigation
+    @Environment(\.palette) private var palette
+    @Environment(\.isWideLayout) private var isWide
+
     @State private var showsMore = false
     @State private var pendingRoute: AppRoute?
 
     var body: some View {
-        NavigationStack(path: $path) {
-            TabView(selection: tabSelection) {
-                TodayView()
-                    .tag(AppTab.today)
-                    .tabItem { tabLabel(.today) }
-                ReadingsView()
-                    .tag(AppTab.readings)
-                    .tabItem { tabLabel(.readings) }
-                HymnsView()
-                    .tag(AppTab.hymns)
-                    .tabItem { tabLabel(.hymns) }
-                SavedView()
-                    .tag(AppTab.saved)
-                    .tabItem { tabLabel(.saved) }
-                Color.clear
-                    .tag(AppTab.more)
-                    .tabItem { tabLabel(.more) }
+        @Bindable var navigation = navigation
+        NavigationStack(path: $navigation.path) {
+            Group {
+                if isWide {
+                    wideShell
+                } else {
+                    phoneTabs
+                }
             }
-            .tint(Color("plPrimary"))
-            .navigationTitle(tab.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { shellToolbar }
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: AppRoute.self, destination: RouteScreen.init)
         }
         .sheet(isPresented: $showsMore, onDismiss: commitPendingRoute) {
@@ -36,47 +27,67 @@ struct RootView: View {
         }
     }
 
+    private var phoneTabs: some View {
+        TabView(selection: tabSelection) {
+            TodayView()
+                .tag(AppTab.today)
+                .tabItem { tabLabel(.today) }
+            ReadingsView()
+                .tag(AppTab.readings)
+                .tabItem { tabLabel(.readings) }
+            HymnsView()
+                .tag(AppTab.hymns)
+                .tabItem { tabLabel(.hymns) }
+            SavedView()
+                .tag(AppTab.saved)
+                .tabItem { tabLabel(.saved) }
+            Color.clear
+                .tag(AppTab.more)
+                .tabItem { tabLabel(.more) }
+        }
+        .tint(palette.primary.color)
+    }
+
+    private var wideShell: some View {
+        VStack(spacing: 0) {
+            TabletTopBar()
+            HStack(spacing: 0) {
+                LibrarySidebar()
+                Rectangle()
+                    .fill(palette.border.color)
+                    .frame(width: 1)
+                tabScreen
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(palette.background.color)
+    }
+
+    @ViewBuilder
+    private var tabScreen: some View {
+        switch navigation.tab {
+        case .today: TodayView()
+        case .readings: ReadingsView()
+        case .hymns: HymnsView()
+        case .saved: SavedView()
+        case .more: Color.clear
+        }
+    }
+
     private var tabSelection: Binding<AppTab> {
         Binding {
-            tab
+            navigation.tab
         } set: { newValue in
             if newValue == .more {
                 showsMore = true
             } else {
-                tab = newValue
+                navigation.tab = newValue
             }
-        }
-    }
-
-    @ToolbarContentBuilder
-    private var shellToolbar: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            Button(action: showToday) {
-                Wordmark()
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("PerfectLiturgy")
-            .accessibilityHint("Returns to Today")
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-            Button(action: showAccount) {
-                Image(systemName: "person.crop.circle")
-            }
-            .accessibilityLabel("Account")
         }
     }
 
     private func tabLabel(_ tab: AppTab) -> some View {
         Label(tab.title, systemImage: tab.systemImage)
-    }
-
-    private func showToday() {
-        path = NavigationPath()
-        tab = .today
-    }
-
-    private func showAccount() {
-        path.append(AppRoute.account)
     }
 
     private func stage(_ route: AppRoute) {
@@ -86,11 +97,15 @@ struct RootView: View {
 
     private func commitPendingRoute() {
         guard let pendingRoute else { return }
-        path.append(pendingRoute)
+        navigation.path.append(pendingRoute)
         self.pendingRoute = nil
     }
 }
 
 #Preview {
     RootView()
+        .modelContainer(try! HymnStore.make(inMemory: true))
+        .environment(DesignPreferences())
+        .environment(AppNavigation())
+        .resolvePalette()
 }

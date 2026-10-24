@@ -1,0 +1,36 @@
+[
+  {
+    "id": "test-la-1",
+    "language": "la",
+    "hymn_number": 9001,
+    "title": "Test hymn one",
+    "first_line": "Test line for the Latin hymn",
+    "lyrics": "Test line for the Latin hymn",
+    "sections": [
+      {
+        "type": "verse",
+        "label": "Stanza",
+        "content": "Test line for the Latin hymn"
+      }
+    ],
+    "seasons": ["easter"],
+    "mass_parts": ["recessional"]
+  },
+  {
+    "id": "test-la-2",
+    "language": "la",
+    "hymn_number": 9002,
+    "title": "Test hymn two",
+    "first_line": "Another Latin test line",
+    "lyrics": "Another Latin test line",
+    "sections": [
+      {
+        "type": "verse",
+        "label": "Stanza",
+        "content": "Another Latin test line"
+      }
+    ],
+    "seasons": ["lent"],
+    "mass_parts": ["communion"]
+  }
+]

@@ -1,14 +1,16 @@
 import SwiftUI
 
-/// Site brand wordmark. The source SVG uses live Cinzel, so the artwork here is outlined.
+/// The wordmark is live Cinzel. The symbol beside it stays the outlined brand mark.
 struct Wordmark: View {
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.palette) private var palette
 
     var body: some View {
-        Image(colorScheme == .dark ? "LogoReversed" : "LogoHorizontal")
-            .resizable()
-            .scaledToFit()
-            .frame(height: 20)
+        Text("PERFECTLITURGY")
+            .font(AppFont.wordmark())
+            .tracking(AppFont.wordmarkTracking)
+            .foregroundStyle(palette.foreground.color)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
             .accessibilityHidden(true)
     }
 }

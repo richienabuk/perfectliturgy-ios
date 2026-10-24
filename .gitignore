@@ -5,3 +5,6 @@ build/
 *.local.xcconfig
 .DS_Store
 tmp/
+
+# Production hymn catalogues. Fixture hymns stay in git.
+PerfectLiturgy/Hymns/Catalogues/
