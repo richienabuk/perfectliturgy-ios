@@ -111,6 +111,7 @@ struct RootView: View {
         .modelContainer(try! HymnStore.make(inMemory: true))
         .environment(DesignPreferences())
         .environment(AppNavigation())
+        .environment(InstalledPacks(defaults: UserDefaults(suiteName: "root-preview") ?? .standard))
         .environment(ReadingsPreferences(defaults: UserDefaults(suiteName: "readings-preview") ?? .standard))
         .resolvePalette()
 }

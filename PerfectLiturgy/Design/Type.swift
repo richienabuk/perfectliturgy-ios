@@ -60,8 +60,7 @@ nonisolated enum AppFont {
     }
 }
 
-/// Heading and body multipliers for reading text. Chrome stays at 1.
-/// The sliders that change these values are stored in a later phase.
+/// Heading and body multipliers for reading text. Chrome, chips, and eyebrows stay at 1.
 nonisolated struct ReadingScale: Equatable, Sendable {
     static let bounds = 0.8...1.4
 

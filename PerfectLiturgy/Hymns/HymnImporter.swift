@@ -186,7 +186,13 @@ enum HymnImporter {
                     context.delete(byID)
                 }
                 let created = try insert(payload, into: context)
-                try retarget(from: previousID, to: created.id, title: created.title, in: context)
+                try retarget(
+                    from: previousID,
+                    to: created.id,
+                    title: created.title,
+                    language: created.language,
+                    in: context
+                )
             } else {
                 try fill(existing, with: payload, in: context)
             }
@@ -199,8 +205,21 @@ enum HymnImporter {
         if let bookmark = try fetchBookmark(id: hymn.id, in: context) {
             context.delete(bookmark)
         } else {
-            context.insert(HymnBookmark(hymnId: hymn.id, titleSnapshot: hymn.title, createdAt: .now))
+            context.insert(
+                HymnBookmark(
+                    hymnId: hymn.id,
+                    titleSnapshot: hymn.title,
+                    language: hymn.language,
+                    createdAt: .now
+                )
+            )
         }
+        try context.save()
+    }
+
+    static func removeBookmark(hymnID: String, in context: ModelContext) throws {
+        guard let bookmark = try fetchBookmark(id: hymnID, in: context) else { return }
+        context.delete(bookmark)
         try context.save()
     }
 
@@ -300,14 +319,22 @@ enum HymnImporter {
         return line.trimmingCharacters(in: .whitespaces)
     }
 
-    private static func retarget(from oldID: String, to newID: String, title: String, in context: ModelContext) throws {
+    private static func retarget(
+        from oldID: String,
+        to newID: String,
+        title: String,
+        language: String,
+        in context: ModelContext
+    ) throws {
         if let bookmark = try fetchBookmark(id: oldID, in: context) {
             let createdAt = bookmark.createdAt
             context.delete(bookmark)
             if let clash = try fetchBookmark(id: newID, in: context) {
                 context.delete(clash)
             }
-            context.insert(HymnBookmark(hymnId: newID, titleSnapshot: title, createdAt: createdAt))
+            context.insert(
+                HymnBookmark(hymnId: newID, titleSnapshot: title, language: language, createdAt: createdAt)
+            )
         }
         if let visit = try context.fetch(FetchDescriptor<HymnVisit>()).first(where: { $0.hymnId == oldID }) {
             let openedAt = visit.openedAt
@@ -366,12 +393,6 @@ enum HymnStore {
     }()
 
     static func make(inMemory: Bool) throws -> ModelContainer {
-        let schema = Schema([
-            HymnRecord.self,
-            HymnSectionRecord.self,
-            HymnBookmark.self,
-            HymnVisit.self,
-        ])
         let configuration = ModelConfiguration(
             inMemory ? "hymns-\(UUID().uuidString)" : "hymns",
             schema: schema,
@@ -379,4 +400,17 @@ enum HymnStore {
         )
         return try ModelContainer(for: schema, configurations: configuration)
     }
+
+    /// A file-backed store, used to prove a bookmark is still there after the app is opened again.
+    static func make(at url: URL) throws -> ModelContainer {
+        let configuration = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
+        return try ModelContainer(for: schema, configurations: configuration)
+    }
+
+    private static let schema = Schema([
+        HymnRecord.self,
+        HymnSectionRecord.self,
+        HymnBookmark.self,
+        HymnVisit.self,
+    ])
 }

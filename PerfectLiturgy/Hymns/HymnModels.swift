@@ -98,11 +98,14 @@ final class HymnSectionRecord {
 final class HymnBookmark {
     @Attribute(.unique) var hymnId: String
     var titleSnapshot: String
+    /// Language code, kept so a removed pack can still be named after the hymn is gone.
+    var language: String = ""
     var createdAt: Date
 
-    init(hymnId: String, titleSnapshot: String, createdAt: Date) {
+    init(hymnId: String, titleSnapshot: String, language: String = "", createdAt: Date) {
         self.hymnId = hymnId
         self.titleSnapshot = titleSnapshot
+        self.language = language
         self.createdAt = createdAt
     }
 }

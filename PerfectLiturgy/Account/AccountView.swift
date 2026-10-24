@@ -2,6 +2,10 @@ import SwiftUI
 
 struct AccountView: View {
     var body: some View {
-        PlaceholderPage(title: "Account", columnWidth: 560)
+        PlaceholderPage(
+            title: "Account",
+            note: "Sign-in is not available yet.",
+            columnWidth: 560
+        )
     }
 }
