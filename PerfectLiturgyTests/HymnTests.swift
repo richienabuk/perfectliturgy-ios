@@ -178,10 +178,12 @@ import UIKit
     defer { _ = loaded.0 }
     let navigation = AppNavigation()
     let design = DesignPreferences()
+    let packs = InstalledPacks(defaults: UserDefaults(suiteName: "render-hymns-\(UUID().uuidString)")!)
     let list = HymnsView(initialQuery: "test")
         .modelContainer(loaded.0)
         .environment(navigation)
         .environment(design)
+        .environment(packs)
         .environment(\.readingScale, design.readingScale)
         .resolvePalette()
         .frame(width: 390, height: 844)
@@ -205,6 +207,7 @@ import UIKit
         .modelContainer(loaded.0)
         .environment(navigation)
         .environment(design)
+        .environment(packs)
         .environment(\.readingScale, design.readingScale)
         .environment(\.isWideLayout, true)
         .resolvePalette()
@@ -212,6 +215,64 @@ import UIKit
     let wideImage = try await snapshot(wide, size: CGSize(width: 1180, height: 820))
     Attachment.record(wideImage, named: "hymn-wide")
     #expect(wideImage.size.width > 1000)
+}
+
+@Test @MainActor func removingEveryHymnLeavesTheList() async throws {
+    let container = try HymnStore.make(inMemory: true)
+    let context = container.mainContext
+    let bundle = Bundle(for: DesignPreferences.self)
+    for name in ["hymns_en", "hymns_la", "hymns_en_catalogue", "hymns_la_catalogue"] {
+        guard let url = HymnBundles.url(for: name, in: bundle) else { continue }
+        try HymnImporter.importData(try Data(contentsOf: url), into: context)
+    }
+    let hymnID = try #require(context.fetch(FetchDescriptor<HymnRecord>()).first?.id)
+    let defaults = UserDefaults(suiteName: "empty-hymns-\(UUID().uuidString)")!
+    defaults.set(["hymns-en", "hymns-la"], forKey: InstalledPacks.storageKey)
+    let packs = InstalledPacks(defaults: defaults)
+    let navigation = AppNavigation()
+    let design = DesignPreferences()
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("empty-hymns-\(UUID().uuidString)", isDirectory: true)
+    let view = VStack {
+        HymnsView()
+        HymnDetailView(id: hymnID)
+    }
+        .modelContainer(container)
+        .environment(navigation)
+        .environment(design)
+        .environment(packs)
+        .environment(\.readingScale, design.readingScale)
+        .resolvePalette()
+        .frame(width: 390, height: 844)
+    let host = UIHostingController(rootView: view)
+    let bounds = CGRect(x: 0, y: 0, width: 390, height: 844)
+    host.view.bounds = bounds
+    host.view.frame = bounds
+    let window = UIWindow(frame: bounds)
+    window.rootViewController = host
+    window.makeKeyAndVisible()
+    host.view.layoutIfNeeded()
+    try await Task.sleep(for: .milliseconds(400))
+    for code in ["en", "la"] {
+        let pack = PackRecord(
+            packId: "hymns-\(code)",
+            type: "hymns",
+            language: code,
+            displayName: code,
+            mode: "download"
+        )
+        try PackInstaller.remove(
+            pack,
+            context: context,
+            packs: packs,
+            supportRoot: root,
+            defaults: defaults
+        )
+    }
+    try await Task.sleep(for: .milliseconds(400))
+    host.view.setNeedsLayout()
+    host.view.layoutIfNeeded()
+    #expect(try context.fetchCount(FetchDescriptor<HymnRecord>()) == 0)
+    #expect(packs.hymnLanguages.isEmpty)
 }
 
 @MainActor

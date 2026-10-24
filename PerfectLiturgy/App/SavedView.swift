@@ -59,7 +59,7 @@ struct SavedView: View {
     @Environment(\.modelContext) private var modelContext
 
     @Query(sort: \HymnBookmark.createdAt, order: .reverse) private var bookmarks: [HymnBookmark]
-    @Query private var hymns: [HymnRecord]
+    @State private var savedRows: [SavedRow] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -67,16 +67,16 @@ struct SavedView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     header
-                    if rows.isEmpty {
+                    if savedRows.isEmpty {
                         Text(SavedRows.emptyNote(signedIn: signedIn))
                             .font(AppFont.body())
                             .foregroundStyle(palette.mutedForeground.color)
                             .fixedSize(horizontal: false, vertical: true)
                     } else {
                         VStack(spacing: 0) {
-                            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                            ForEach(Array(savedRows.enumerated()), id: \.element.id) { index, row in
                                 savedRow(row)
-                                if index < rows.count - 1 {
+                                if index < savedRows.count - 1 {
                                     Rectangle()
                                         .fill(palette.border.color)
                                         .frame(height: 1)
@@ -95,6 +95,12 @@ struct SavedView: View {
         .navigationTitle(SavedRows.heading)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
+        .task { reloadRows() }
+        .onChange(of: bookmarks.map(\.hymnId)) { _, _ in reloadRows() }
+        .onChange(of: packs.ids) { _, _ in reloadRows() }
+        .onReceive(NotificationCenter.default.publisher(for: .hymnStoreDidChange)) { _ in
+            reloadRows()
+        }
     }
 
     private var header: some View {
@@ -107,11 +113,11 @@ struct SavedView: View {
         }
     }
 
-    private var rows: [SavedRow] {
-        bookmarks.map { bookmark in
+    private func reloadRows() {
+        savedRows = bookmarks.map { bookmark in
             SavedRows.row(
                 bookmark: bookmark,
-                hymn: hymns.first { $0.id == bookmark.hymnId },
+                hymn: HymnImporter.record(id: bookmark.hymnId, in: modelContext),
                 installed: packs.ids
             )
         }

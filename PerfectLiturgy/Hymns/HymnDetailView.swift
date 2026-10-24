@@ -10,20 +10,16 @@ struct HymnDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.isWideLayout) private var isWide
     @Environment(\.modelContext) private var modelContext
-    @Query private var hymns: [HymnRecord]
+    @State private var page: HymnPage?
     @Query private var bookmarks: [HymnBookmark]
-
-    private var hymn: HymnRecord? {
-        hymns.first { $0.id == id }
-    }
 
     var body: some View {
         VStack(spacing: 0) {
-            if showsChrome, !isWide || hymn == nil {
+            if showsChrome, !isWide || page == nil {
                 PLTopBar()
             }
-            if let hymn {
-                detail(hymn)
+            if let page {
+                detail(page)
             } else {
                 missing
             }
@@ -33,13 +29,21 @@ struct HymnDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
         .accessibilityIdentifier("hymn.\(id)")
-        .task(id: hymn?.id) {
-            guard let hymnID = hymn?.id else { return }
-            try? HymnImporter.recordVisit(hymnID: hymnID, in: modelContext)
+        .onReceive(NotificationCenter.default.publisher(for: .hymnStoreDidChange)) { _ in
+            loadPage()
+        }
+        .task(id: id) {
+            loadPage()
+            guard page != nil else { return }
+            try? HymnImporter.recordVisit(hymnID: id, in: modelContext)
         }
     }
 
-    private func detail(_ hymn: HymnRecord) -> some View {
+    private func loadPage() {
+        page = HymnImporter.page(id: id, in: modelContext)
+    }
+
+    private func detail(_ hymn: HymnPage) -> some View {
         let saved = bookmarks.contains { $0.hymnId == hymn.id }
         let wide = !showsChrome
         let tablet = isWide && showsChrome
@@ -66,7 +70,7 @@ struct HymnDetailView: View {
                         .foregroundStyle(palette.mutedForeground.color)
                         Spacer(minLength: 8)
                         iconButton(systemName: saved ? "bookmark.fill" : "bookmark", label: saved ? "Remove saved hymn" : "Save hymn", filled: saved) {
-                            try? HymnImporter.toggleBookmark(hymn, in: modelContext)
+                            toggleSaved()
                         }
                     }
                     HStack {
@@ -75,7 +79,7 @@ struct HymnDetailView: View {
                             .tracking(AppFont.eyebrowTracking)
                             .foregroundStyle(palette.emphasis.color)
                         Spacer(minLength: 8)
-                        Text(lyricsStatus(hymn).uppercased())
+                        Text(hymn.lyricsStatus.uppercased())
                             .font(AppFont.eyebrow())
                             .tracking(AppFont.eyebrowTracking)
                             .foregroundStyle(palette.mutedForeground.color)
@@ -94,7 +98,7 @@ struct HymnDetailView: View {
                     .font(AppFont.heading(size: titleSize))
                     .foregroundStyle(palette.foreground.color)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(wide ? wideMeta(hymn) : catalogueLine(hymn))
+                Text(wide ? hymn.wideMeta : hymn.catalogueLine)
                     .font(AppFont.interface(size: 14))
                     .foregroundStyle(palette.mutedForeground.color)
                     .fixedSize(horizontal: false, vertical: true)
@@ -104,17 +108,17 @@ struct HymnDetailView: View {
                         .foregroundStyle(palette.mutedForeground.color)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if let details = performanceLine(hymn) {
+                if let details = hymn.performanceLine {
                     Text(details)
                         .font(AppFont.interface(size: 14))
                         .foregroundStyle(palette.mutedForeground.color)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                ForEach(blocks(hymn)) { block in
+                ForEach(hymn.blocks) { block in
                     HymnSectionCard(block: block)
                 }
                 if wide {
-                    ShareLink(item: shareText(hymn)) {
+                    ShareLink(item: hymn.shareText) {
                         Label("Share", systemImage: "square.and.arrow.up")
                             .font(AppFont.interface(size: 14, weight: .semibold))
                             .foregroundStyle(palette.foreground.color)
@@ -162,12 +166,12 @@ struct HymnDetailView: View {
         .accessibilityLabel("Back")
     }
 
-    private func hymnActions(_ hymn: HymnRecord, saved: Bool) -> some View {
+    private func hymnActions(_ hymn: HymnPage, saved: Bool) -> some View {
         HStack(spacing: 8) {
             iconButton(systemName: saved ? "bookmark.fill" : "bookmark", label: saved ? "Remove saved hymn" : "Save hymn", filled: saved) {
-                try? HymnImporter.toggleBookmark(hymn, in: modelContext)
+                toggleSaved()
             }
-            ShareLink(item: shareText(hymn)) {
+            ShareLink(item: hymn.shareText) {
                 Image(systemName: "square.and.arrow.up")
                     .font(.system(size: 16))
                     .foregroundStyle(palette.foreground.color)
@@ -198,14 +202,9 @@ struct HymnDetailView: View {
         .accessibilityLabel(label)
     }
 
-    private func lyricsStatus(_ hymn: HymnRecord) -> String {
-        let hasMedia = !hymn.audioURLs.isEmpty || !hymn.videoURLs.isEmpty || !hymn.sheetMusicURLs.isEmpty
-        return hasMedia ? "Lyrics · Recordings" : "Lyrics · No recordings"
-    }
-
-    private func wideMeta(_ hymn: HymnRecord) -> String {
-        let meta = HymnLabels.detailMeta(seasons: hymn.seasons, massParts: hymn.massParts, topics: hymn.topics)
-        return meta.isEmpty ? catalogueLine(hymn) : meta
+    private func toggleSaved() {
+        guard let hymn = HymnImporter.record(id: id, in: modelContext) else { return }
+        try? HymnImporter.toggleBookmark(hymn, in: modelContext)
     }
 
     private var missing: some View {
@@ -219,42 +218,6 @@ struct HymnDetailView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private func blocks(_ hymn: HymnRecord) -> [HymnLyricBlock] {
-        HymnLyrics.blocks(sections: hymn.sectionTexts, lyrics: hymn.lyrics)
-    }
-
-    private func catalogueLine(_ hymn: HymnRecord) -> String {
-        HymnLabels.catalogueLine(
-            language: hymn.language,
-            seasons: hymn.seasons,
-            massParts: hymn.massParts,
-            topics: hymn.topics
-        )
-    }
-
-    private func performanceLine(_ hymn: HymnRecord) -> String? {
-        var parts: [String] = []
-        if let tune = hymn.tuneName, !tune.isEmpty { parts.append("Tune \(tune)") }
-        if let key = hymn.musicalKey, !key.isEmpty { parts.append("Key \(key)") }
-        if let authors = hymn.authors, !authors.isEmpty { parts.append(authors) }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
-
-    private func shareText(_ hymn: HymnRecord) -> String {
-        HymnShareText.make(
-            language: hymn.language,
-            number: hymn.hymnNumber,
-            title: hymn.title,
-            seasons: hymn.seasons,
-            massParts: hymn.massParts,
-            topics: hymn.topics,
-            sections: hymn.sectionTexts,
-            lyrics: hymn.lyrics,
-            tuneName: hymn.tuneName,
-            musicalKey: hymn.musicalKey
-        )
     }
 }
 

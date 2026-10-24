@@ -268,5 +268,9 @@ enum DevotionReader {
         cache[key] = body
         return body
     }
+
+    static func forget(_ kind: DevotionKind, language: String) {
+        cache["\(kind.rawValue)-\(language)"] = nil
+    }
 }
 

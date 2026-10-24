@@ -45,18 +45,30 @@ final class InstalledPacks {
 
     /// Installed languages for one devotion, English and Latin first.
     func languages(for kind: DevotionKind) -> [String] {
-        let prefix = "\(kind.rawValue)-"
-        let codes = ids.compactMap { id -> String? in
-            guard id.hasPrefix(prefix) else { return nil }
-            let code = String(id.dropFirst(prefix.count))
-            return code.isEmpty ? nil : code
-        }
-        return HymnLanguage.ordered(codes)
+        codes(withPrefix: "\(kind.rawValue)-")
+    }
+
+    var hymnLanguages: [String] {
+        codes(withPrefix: "hymns-")
+    }
+
+    func install(_ id: String) {
+        ids.insert(id)
+        defaults.set(ids.sorted(), forKey: Self.storageKey)
     }
 
     func remove(_ id: String) {
         guard ids.contains(id) else { return }
         ids.remove(id)
         defaults.set(ids.sorted(), forKey: Self.storageKey)
+    }
+
+    private func codes(withPrefix prefix: String) -> [String] {
+        let codes = ids.compactMap { id -> String? in
+            guard id.hasPrefix(prefix) else { return nil }
+            let code = String(id.dropFirst(prefix.count))
+            return code.isEmpty ? nil : code
+        }
+        return HymnLanguage.ordered(codes)
     }
 }

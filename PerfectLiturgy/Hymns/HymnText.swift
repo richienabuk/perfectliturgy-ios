@@ -130,6 +130,25 @@ nonisolated struct HymnSummary: Equatable, Sendable, Identifiable {
     var topics: [String]
 }
 
+/// A hymn copied out of the store. Screens keep this, so removing the pack does not read a deleted row.
+struct HymnPage: Equatable, Identifiable {
+    var id: String
+    var language: String
+    var hymnNumber: Int
+    var title: String
+    var firstLine: String
+    var backgroundNotes: String?
+    var catalogueLine: String
+    var wideMeta: String
+    var lyricsStatus: String
+    var performanceLine: String?
+    var blocks: [HymnLyricBlock]
+    var shareText: String
+    var audioURLs: [String]
+    var videoURLs: [String]
+    var sheetMusicURLs: [String]
+}
+
 nonisolated struct HymnFilter: Equatable, Sendable {
     var text: String = ""
     var language: String?
@@ -353,6 +372,50 @@ extension HymnRecord {
             seasons: seasons,
             massParts: massParts,
             topics: topics
+        )
+    }
+
+    var page: HymnPage {
+        let texts = sectionTexts
+        let hasMedia = !audioURLs.isEmpty || !videoURLs.isEmpty || !sheetMusicURLs.isEmpty
+        var performance: [String] = []
+        if let tune = tuneName, !tune.isEmpty { performance.append("Tune \(tune)") }
+        if let key = musicalKey, !key.isEmpty { performance.append("Key \(key)") }
+        if let authors, !authors.isEmpty { performance.append(authors) }
+        let meta = HymnLabels.detailMeta(seasons: seasons, massParts: massParts, topics: topics)
+        let catalogue = HymnLabels.catalogueLine(
+            language: language,
+            seasons: seasons,
+            massParts: massParts,
+            topics: topics
+        )
+        return HymnPage(
+            id: id,
+            language: language,
+            hymnNumber: hymnNumber,
+            title: title,
+            firstLine: firstLine,
+            backgroundNotes: backgroundNotes,
+            catalogueLine: catalogue,
+            wideMeta: meta.isEmpty ? catalogue : meta,
+            lyricsStatus: hasMedia ? "Lyrics · Recordings" : "Lyrics · No recordings",
+            performanceLine: performance.isEmpty ? nil : performance.joined(separator: " · "),
+            blocks: HymnLyrics.blocks(sections: texts, lyrics: lyrics),
+            shareText: HymnShareText.make(
+                language: language,
+                number: hymnNumber,
+                title: title,
+                seasons: seasons,
+                massParts: massParts,
+                topics: topics,
+                sections: texts,
+                lyrics: lyrics,
+                tuneName: tuneName,
+                musicalKey: musicalKey
+            ),
+            audioURLs: audioURLs,
+            videoURLs: videoURLs,
+            sheetMusicURLs: sheetMusicURLs
         )
     }
 }

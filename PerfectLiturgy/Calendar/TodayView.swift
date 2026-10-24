@@ -6,7 +6,8 @@ struct TodayView: View {
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
     @Query(sort: \HymnBookmark.createdAt, order: .reverse) private var bookmarks: [HymnBookmark]
-    @Query private var hymns: [HymnRecord]
+    @Environment(\.modelContext) private var modelContext
+    @State private var savedCatalogue: String?
 
     private var page: TodayPage {
         TodayPageBuilder.page(for: CivilDate(Date()), lectionary: TodayLibrary.lectionary)
@@ -32,6 +33,11 @@ struct TodayView: View {
         .navigationTitle("Today")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
+        .task { loadSaved() }
+        .onChange(of: bookmarks.map(\.hymnId)) { _, _ in loadSaved() }
+        .onReceive(NotificationCenter.default.publisher(for: .hymnStoreDidChange)) { _ in
+            loadSaved()
+        }
     }
 
     private var header: some View {
@@ -122,8 +128,7 @@ struct TodayView: View {
     }
 
     private func savedCard(_ bookmark: HymnBookmark) -> some View {
-        let hymn = hymns.first { $0.id == bookmark.hymnId }
-        return Button {
+        Button {
             navigation.path.append(AppRoute.hymn(id: bookmark.hymnId))
         } label: {
             HStack(spacing: 12) {
@@ -133,8 +138,8 @@ struct TodayView: View {
                         .font(AppFont.interface(size: 16, weight: .semibold))
                         .foregroundStyle(palette.foreground.color)
                         .multilineTextAlignment(.leading)
-                    if let hymn {
-                        Text(HymnLanguage.catalogueName(for: hymn.language))
+                    if let savedCatalogue {
+                        Text(savedCatalogue)
                             .font(AppFont.interface(size: 13))
                             .foregroundStyle(palette.mutedForeground.color)
                     }
@@ -149,6 +154,18 @@ struct TodayView: View {
             .background(palette.secondary.color, in: RoundedRectangle(cornerRadius: Radius.lg))
         }
         .buttonStyle(PressScaleButtonStyle())
+    }
+
+    private func loadSaved() {
+        guard let bookmark = bookmarks.first else {
+            savedCatalogue = nil
+            return
+        }
+        guard let hymn = HymnImporter.record(id: bookmark.hymnId, in: modelContext) else {
+            savedCatalogue = nil
+            return
+        }
+        savedCatalogue = HymnLanguage.catalogueName(for: hymn.language)
     }
 
     private var emptySavedCard: some View {

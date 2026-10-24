@@ -2,6 +2,11 @@ import Foundation
 import os
 import SwiftData
 
+extension Notification.Name {
+    /// Posted after hymns are saved or removed. Screens copy rows from the store when they hear it.
+    static let hymnStoreDidChange = Notification.Name("com.perfectliturgy.hymnStoreDidChange")
+}
+
 struct HymnPayload: Decodable, Equatable {
     var id: String
     var language: String
@@ -147,14 +152,19 @@ enum HymnImporter {
         if existing > 0, defaults.string(forKey: signatureKey) == signature {
             return
         }
+        let allowed = installedHymnLanguages(defaults: defaults)
         for url in urls {
+            let name = url.deletingPathExtension().lastPathComponent
+            if let allowed, let language = Self.language(inResourceName: name), !allowed.contains(language) {
+                continue
+            }
             do {
                 try importData(try Data(contentsOf: url), into: context)
             } catch {
                 logger.error("Could not import \(url.lastPathComponent, privacy: .public)")
             }
         }
-        try context.save()
+        try save(context)
         if try context.fetchCount(FetchDescriptor<HymnRecord>()) > 0 {
             defaults.set(signature, forKey: signatureKey)
         }
@@ -164,7 +174,48 @@ enum HymnImporter {
         for payload in try HymnDecoder.payloads(from: data) {
             try upsert(payload, into: context)
         }
+        try save(context)
+    }
+
+    /// Deletes every hymn in one language. Bookmarks stay, so Saved can still name them.
+    static func removeLanguage(_ language: String, in context: ModelContext) throws {
+        let code = language
+        let descriptor = FetchDescriptor<HymnRecord>(predicate: #Predicate { $0.language == code })
+        for hymn in try context.fetch(descriptor) {
+            context.delete(hymn)
+        }
+        try save(context)
+    }
+
+    /// Saves, then tells screens to copy hymn rows again. Reading a deleted row traps.
+    private static func save(_ context: ModelContext) throws {
         try context.save()
+        NotificationCenter.default.post(name: .hymnStoreDidChange, object: context)
+    }
+
+    /// Hymns still in the store, copied so a screen never reads a row after it is removed.
+    static func catalogue(in context: ModelContext) -> [HymnSummary] {
+        let descriptor = FetchDescriptor<HymnRecord>(sortBy: [
+            SortDescriptor(\.language),
+            SortDescriptor(\.hymnNumber),
+        ])
+        let records = (try? context.fetch(descriptor)) ?? []
+        return records.compactMap { hymn in
+            guard !hymn.isDeleted else { return nil }
+            return hymn.summary
+        }
+    }
+
+    static func page(id: String, in context: ModelContext) -> HymnPage? {
+        guard let hymn = record(id: id, in: context) else { return nil }
+        return hymn.page
+    }
+
+    static func record(id: String, in context: ModelContext) -> HymnRecord? {
+        let hymnID = id
+        let descriptor = FetchDescriptor<HymnRecord>(predicate: #Predicate { $0.id == hymnID })
+        guard let hymn = try? context.fetch(descriptor).first, !hymn.isDeleted else { return nil }
+        return hymn
     }
 
     static func upsert(_ payload: HymnPayload, into context: ModelContext) throws {
@@ -378,6 +429,31 @@ enum HymnImporter {
             result.append(record)
         }
         return result
+    }
+
+    /// `hymns_en` and `hymns_en_catalogue` both mean English.
+    static func language(inResourceName name: String) -> String? {
+        var base = name
+        let suffix = "_catalogue"
+        if base.hasSuffix(suffix) {
+            base.removeLast(suffix.count)
+        }
+        let prefix = "hymns_"
+        guard base.hasPrefix(prefix) else { return nil }
+        let code = String(base.dropFirst(prefix.count))
+        return code.isEmpty ? nil : code
+    }
+
+    /// Nil means the installed set was never written, so the bundled languages still apply.
+    private static func installedHymnLanguages(defaults: UserDefaults) -> Set<String>? {
+        guard defaults.object(forKey: InstalledPacks.storageKey) != nil else { return nil }
+        let stored = defaults.stringArray(forKey: InstalledPacks.storageKey) ?? []
+        let codes = stored.compactMap { id -> String? in
+            guard id.hasPrefix("hymns-") else { return nil }
+            let code = String(id.dropFirst("hymns-".count))
+            return code.isEmpty ? nil : code
+        }
+        return Set(codes)
     }
 }
 

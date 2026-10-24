@@ -10,12 +10,10 @@ struct HymnsView: View {
     @Environment(\.palette) private var palette
     @Environment(\.splitsColumns) private var splitsColumns
     @Environment(AppNavigation.self) private var navigation
+    @Environment(InstalledPacks.self) private var packs
     @Environment(\.modelContext) private var modelContext
 
-    @Query(sort: [
-        SortDescriptor(\HymnRecord.language),
-        SortDescriptor(\HymnRecord.hymnNumber),
-    ]) private var hymns: [HymnRecord]
+    @State private var catalogue: [HymnSummary] = []
     @Query private var bookmarks: [HymnBookmark]
 
     @State private var query = ""
@@ -66,6 +64,10 @@ struct HymnsView: View {
         .onChange(of: language) { _, _ in visibleCount = HymnFilter.pageSize }
         .onChange(of: season) { _, _ in visibleCount = HymnFilter.pageSize }
         .onChange(of: massPart) { _, _ in visibleCount = HymnFilter.pageSize }
+        .task { loadCatalogue() }
+        .onReceive(NotificationCenter.default.publisher(for: .hymnStoreDidChange)) { _ in
+            loadCatalogue()
+        }
     }
 
     private var listColumn: some View {
@@ -324,7 +326,7 @@ struct HymnsView: View {
         .accessibilityLabel("Filter hymns")
     }
 
-    private func row(_ hymn: HymnRecord) -> some View {
+    private func row(_ hymn: HymnSummary) -> some View {
         let saved = savedIDs.contains(hymn.id)
         let selected = splitsColumns && hymn.id == activeID
         return HStack(alignment: .center, spacing: 12) {
@@ -367,7 +369,7 @@ struct HymnsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(hymn.hymnNumber), \(hymn.title)")
-            bookmarkButton(saved: saved, hymn: hymn)
+            bookmarkButton(saved: saved, id: hymn.id)
             Image(systemName: "chevron.right")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(palette.mutedForeground.color)
@@ -416,8 +418,9 @@ struct HymnsView: View {
             }
     }
 
-    private func bookmarkButton(saved: Bool, hymn: HymnRecord) -> some View {
+    private func bookmarkButton(saved: Bool, id: String) -> some View {
         Button {
+            guard let hymn = HymnImporter.record(id: id, in: modelContext) else { return }
             try? HymnImporter.toggleBookmark(hymn, in: modelContext)
         } label: {
             Image(systemName: saved ? "bookmark.fill" : "bookmark")
@@ -429,12 +432,17 @@ struct HymnsView: View {
         .accessibilityLabel(saved ? "Remove saved hymn" : "Save hymn")
     }
 
-    private func rowLine(_ hymn: HymnRecord) -> String {
+    private func rowLine(_ hymn: HymnSummary) -> String {
         HymnLabels.rowLine(language: hymn.language, seasons: hymn.seasons, massParts: hymn.massParts)
     }
 
+    private func loadCatalogue() {
+        catalogue = HymnImporter.catalogue(in: modelContext)
+    }
+
     private var languages: [String] {
-        HymnLanguage.ordered(hymns.map(\.language))
+        let installed = Set(packs.hymnLanguages)
+        return HymnLanguage.ordered(catalogue.map(\.language).filter { installed.contains($0) })
     }
 
     /// Nil shows every catalogue. A stored choice is kept only while that language is on the device.
@@ -452,11 +460,12 @@ struct HymnsView: View {
         HymnFilter(text: debouncedQuery, language: activeLanguage, season: season, massPart: massPart)
     }
 
-    private var filtered: [HymnRecord] {
-        hymns.filter { HymnSearch.matches($0.summary, filter: filter) }
+    private var filtered: [HymnSummary] {
+        let installed = Set(packs.hymnLanguages)
+        return catalogue.filter { installed.contains($0.language) && HymnSearch.matches($0, filter: filter) }
     }
 
-    private var visible: [HymnRecord] {
+    private var visible: [HymnSummary] {
         Array(filtered.prefix(visibleCount))
     }
 
@@ -481,7 +490,7 @@ struct HymnsView: View {
         return splitsColumns ? filtered.first?.id : nil
     }
 
-    private func open(_ hymn: HymnRecord) {
+    private func open(_ hymn: HymnSummary) {
         if splitsColumns {
             selectedID = hymn.id
         } else {
