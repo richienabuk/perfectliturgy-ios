@@ -9,6 +9,7 @@ struct PackRecord: Codable, Equatable, Sendable, Identifiable {
     var size: Int?
     var requiresSignIn: Bool
     var mode: String
+    var metadata: PackMetadata?
 
     var id: String { packId }
 
@@ -20,7 +21,8 @@ struct PackRecord: Codable, Equatable, Sendable, Identifiable {
         revision: String = "",
         size: Int? = nil,
         requiresSignIn: Bool = true,
-        mode: String
+        mode: String,
+        metadata: PackMetadata? = nil
     ) {
         self.packId = packId
         self.type = type
@@ -30,6 +32,7 @@ struct PackRecord: Codable, Equatable, Sendable, Identifiable {
         self.size = size
         self.requiresSignIn = requiresSignIn
         self.mode = mode
+        self.metadata = metadata
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -41,6 +44,7 @@ struct PackRecord: Codable, Equatable, Sendable, Identifiable {
         case size
         case requiresSignIn
         case mode
+        case metadata
     }
 
     init(from decoder: Decoder) throws {
@@ -53,6 +57,7 @@ struct PackRecord: Codable, Equatable, Sendable, Identifiable {
         size = try container.decodeIfPresent(Int.self, forKey: .size)
         requiresSignIn = try container.decodeIfPresent(Bool.self, forKey: .requiresSignIn) ?? true
         mode = try container.decodeIfPresent(String.self, forKey: .mode) ?? "download"
+        metadata = try container.decodeIfPresent(PackMetadata.self, forKey: .metadata)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -65,7 +70,13 @@ struct PackRecord: Codable, Equatable, Sendable, Identifiable {
         try container.encodeIfPresent(size, forKey: .size)
         try container.encode(requiresSignIn, forKey: .requiresSignIn)
         try container.encode(mode, forKey: .mode)
+        try container.encodeIfPresent(metadata, forKey: .metadata)
     }
+}
+
+/// Type-specific catalog extras. Readings use `displayWindow` (`day`, `week`, or `month`).
+struct PackMetadata: Codable, Equatable, Sendable {
+    var displayWindow: String?
 }
 
 struct PackListEnvelope: Decodable, Sendable {

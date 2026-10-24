@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import SwiftUI
 import Testing
 import UIKit
@@ -104,7 +105,7 @@ import UIKit
     let installed = CalendarOption(id: "calendar-test", title: "Test calendar", celebrations: [patron])
     let list = CalendarCatalog.list(installed: [installed, CalendarOption.roman])
     #expect(list.map(\.id) == ["roman", "calendar-test"])
-    #expect(CalendarCatalog.installed().isEmpty)
+    #expect(CalendarCatalog.installed(ids: [], root: URL(fileURLWithPath: "/tmp/pl-no-calendars")).isEmpty)
 
     let roman = CalendarCatalog.selection(storedID: "missing", in: list)
     #expect(roman.id == "roman")
@@ -140,10 +141,14 @@ import UIKit
     let suite = "readings-ui-\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
     defaults.removePersistentDomain(forName: suite)
+    let container = try HymnStore.make(inMemory: true)
+    let packs = InstalledPacks(defaults: defaults)
     let view = ReadingsView()
         .environment(AppNavigation())
         .environment(DesignPreferences())
         .environment(ReadingsPreferences(defaults: defaults))
+        .environment(packs)
+        .modelContainer(container)
         .resolvePalette()
         .frame(width: 390, height: 1400)
     let image = try await renderReadings(view, size: CGSize(width: 390, height: 1400))
@@ -155,6 +160,8 @@ import UIKit
         .environment(AppNavigation())
         .environment(DesignPreferences())
         .environment(ReadingsPreferences(defaults: defaults))
+        .environment(packs)
+        .modelContainer(container)
         .environment(\.isWideLayout, true)
         .resolvePalette()
         .frame(width: 1100, height: 900)

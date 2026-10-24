@@ -165,12 +165,11 @@ import UIKit
     try HymnImporter.importBundledIfNeeded(into: context, bundle: bundle, defaults: defaults)
     let second = try context.fetchCount(FetchDescriptor<HymnRecord>())
     #expect(first == second)
-    #expect(first >= 9)
     if HymnBundles.url(for: "hymns_en_catalogue", in: bundle) != nil {
         #expect(first > 300)
     }
     let titles = try context.fetch(FetchDescriptor<HymnRecord>()).filter { $0.title == "Test hymn one" }
-    #expect(titles.count == 2)
+    #expect(titles.isEmpty)
 }
 
 @Test func renderHymnScreens() async throws {

@@ -95,7 +95,7 @@ nonisolated struct MonthPage: Equatable, Sendable {
     }
 }
 
-/// A liturgical calendar the Readings screen can apply. Roman is built in. Country packs arrive later.
+/// A liturgical calendar the Readings screen can apply. Roman is built in. Country packs add the rest.
 nonisolated struct CalendarOption: Equatable, Sendable, Identifiable {
     var id: String
     var title: String
@@ -104,7 +104,7 @@ nonisolated struct CalendarOption: Equatable, Sendable, Identifiable {
     static let roman = CalendarOption(id: "roman", title: "Roman calendar", celebrations: [])
 }
 
-nonisolated enum CalendarCatalog {
+enum CalendarCatalog {
     static func list(installed: [CalendarOption]) -> [CalendarOption] {
         let extras = installed.filter { $0.id != CalendarOption.roman.id }
         return [CalendarOption.roman] + extras
@@ -114,9 +114,9 @@ nonisolated enum CalendarCatalog {
         options.first { $0.id == storedID } ?? .roman
     }
 
-    /// Country calendars are not installed in this phase.
-    static func installed() -> [CalendarOption] {
-        []
+    /// Country calendars whose pack id is installed and whose file decodes.
+    static func installed(ids: Set<String>, catalog: [PackRecord] = [], root: URL) -> [CalendarOption] {
+        CountryCalendar.options(ids: ids, catalog: catalog, root: root)
     }
 }
 

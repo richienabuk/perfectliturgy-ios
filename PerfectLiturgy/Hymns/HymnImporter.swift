@@ -107,9 +107,8 @@ enum HymnDecoder {
 }
 
 enum HymnBundles {
+    /// Catalogues only. Fixture files stay in the bundle for tests and are not imported.
     static let resourceNames = [
-        "hymns_en",
-        "hymns_la",
         "hymns_en_catalogue",
         "hymns_la_catalogue",
     ]
@@ -141,6 +140,7 @@ enum HymnImporter {
         bundle: Bundle = .main,
         defaults: UserDefaults = .standard
     ) throws {
+        try removeFixtures(in: context)
         let urls = HymnBundles.urls(in: bundle)
         let signature = urls.map { url in
             let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
@@ -173,6 +173,17 @@ enum HymnImporter {
     static func importData(_ data: Data, into context: ModelContext) throws {
         for payload in try HymnDecoder.payloads(from: data) {
             try upsert(payload, into: context)
+        }
+        try save(context)
+    }
+
+    /// Fixture rows use ids such as `test-en-1`. They are for tests, not the hymn list.
+    private static func removeFixtures(in context: ModelContext) throws {
+        let descriptor = FetchDescriptor<HymnRecord>(predicate: #Predicate { $0.id.starts(with: "test-") })
+        let fixtures = try context.fetch(descriptor)
+        guard !fixtures.isEmpty else { return }
+        for hymn in fixtures {
+            context.delete(hymn)
         }
         try save(context)
     }
@@ -488,5 +499,7 @@ enum HymnStore {
         HymnSectionRecord.self,
         HymnBookmark.self,
         HymnVisit.self,
+        BibleVerseRecord.self,
+        BibleVersionRecord.self,
     ])
 }

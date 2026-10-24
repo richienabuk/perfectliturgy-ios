@@ -75,6 +75,9 @@ enum PackInstaller {
         if pack.type == "hymns", let language = languageCode(for: pack) {
             try HymnImporter.removeLanguage(language, in: context)
         }
+        if pack.type == "readings" {
+            try BibleLibrary.remove(translation: BibleLibrary.translationID(for: pack.packId), in: context)
+        }
         if let kind = DevotionKind(rawValue: pack.type), let language = languageCode(for: pack) {
             DevotionReader.forget(kind, language: language)
         }
@@ -116,8 +119,11 @@ enum PackInstaller {
             if let language = languageCode(for: pack) {
                 DevotionReader.forget(kind, language: language)
             }
-        case "readings", "calendar":
-            guard (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else {
+        case "readings":
+            try BibleLibrary.importPack(data, pack: pack, into: context, anchor: CivilDate(Date()))
+            try write(data, packId: pack.packId, root: supportRoot)
+        case "calendar":
+            guard CountryCalendar.celebrations(in: data) != nil else {
                 throw PackHTTPError.transport
             }
             try write(data, packId: pack.packId, root: supportRoot)

@@ -1,13 +1,17 @@
+import SwiftData
 import SwiftUI
 
 struct ReadingsView: View {
-    var installedCalendars: [CalendarOption] = CalendarCatalog.installed()
+    var installedCalendars: [CalendarOption] = []
     var bibleVersions: [BibleVersionChoice] = []
 
     @Environment(AppNavigation.self) private var navigation
     @Environment(ReadingsPreferences.self) private var readings
+    @Environment(InstalledPacks.self) private var packs
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
+    @Query(sort: \BibleVersionRecord.title) private var storedVersions: [BibleVersionRecord]
 
     @State private var cursor = ReadingsCursor(today: CivilDate(Date()))
     @State private var showsMonth = false
@@ -16,7 +20,20 @@ struct ReadingsView: View {
     @State private var month = MonthPage.containing(CivilDate(Date()), firstWeekday: 1)
 
     private var calendars: [CalendarOption] {
-        CalendarCatalog.list(installed: installedCalendars)
+        let root = DevotionLibrary.applicationSupport
+        let installed = installedCalendars.isEmpty
+            ? CalendarCatalog.installed(
+                ids: packs.ids,
+                catalog: PackFiles.loadCatalog(root: root)?.packs ?? [],
+                root: root
+            )
+            : installedCalendars
+        return CalendarCatalog.list(installed: installed)
+    }
+
+    private var versionChoices: [BibleVersionChoice] {
+        if !bibleVersions.isEmpty { return bibleVersions }
+        return storedVersions.map { BibleVersionChoice(id: $0.id, title: $0.title) }
     }
 
     private var calendar: CalendarOption {
@@ -24,7 +41,7 @@ struct ReadingsView: View {
     }
 
     private var versionStatus: BibleVersionStatus {
-        BibleVersionStatus.resolve(bibleVersions, selectedID: readings.bibleVersionID)
+        BibleVersionStatus.resolve(versionChoices, selectedID: readings.bibleVersionID)
     }
 
     private var page: TodayPage {
@@ -39,12 +56,22 @@ struct ReadingsView: View {
         TodayPageBuilder.spokenDate(for: cursor.date)
     }
 
-    /// Verse text for a slot, once a Bible version on the device covers every cited verse.
+    /// Verse text when this date is inside the display window and every cited verse is stored.
     private func verses(for reading: TodayReading) -> String? {
-        guard bibleVersions.contains(where: { $0.id == readings.bibleVersionID }), !reading.reference.isEmpty else {
+        guard !reading.reference.isEmpty else { return nil }
+        let choices = versionChoices
+        guard let choice = choices.first(where: { $0.id == readings.bibleVersionID }) ?? choices.first else {
             return nil
         }
-        return nil
+        guard let version = storedVersions.first(where: { $0.id == choice.id }) else { return nil }
+        return BiblePassage.text(
+            reference: reading.reference,
+            translation: version.id,
+            on: cursor.date,
+            window: version.windowRaw,
+            anchor: version.anchor,
+            in: modelContext
+        )
     }
 
     var body: some View {
@@ -217,7 +244,7 @@ struct ReadingsView: View {
             .buttonStyle(PressScaleButtonStyle())
         } else {
             Menu {
-                ForEach(bibleVersions) { version in
+                ForEach(versionChoices) { version in
                     Button {
                         readings.bibleVersionID = version.id
                     } label: {
@@ -506,5 +533,7 @@ struct ReadingsMonthSheet: View {
         .environment(DesignPreferences())
         .environment(AppNavigation())
         .environment(ReadingsPreferences(defaults: UserDefaults(suiteName: "readings-preview") ?? .standard))
+        .environment(InstalledPacks(defaults: UserDefaults(suiteName: "readings-preview") ?? .standard))
+        .modelContainer(for: [BibleVerseRecord.self, BibleVersionRecord.self], inMemory: true)
         .resolvePalette()
 }
