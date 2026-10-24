@@ -169,24 +169,75 @@ enum CardFill {
 
 struct LiturgicalBanner: View {
     let title: String
-    var detail: String?
+    var weekMark: String?
 
     @Environment(\.palette) private var palette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(AppFont.title(size: 26))
-                .foregroundStyle(palette.liturgicalForeground.color)
-            if let detail {
-                Text(detail)
-                    .font(AppFont.interface(size: 15, weight: .semibold))
-                    .foregroundStyle(palette.liturgicalAccent.color)
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Rectangle()
+                        .fill(palette.liturgicalAccent.color)
+                        .frame(width: 16, height: 1)
+                    Text("LITURGICAL SEASON")
+                        .font(AppFont.eyebrow())
+                        .tracking(AppFont.eyebrowTracking)
+                        .foregroundStyle(palette.liturgicalAccent.color)
+                }
+                Text(title)
+                    .font(AppFont.title(size: 28))
+                    .foregroundStyle(palette.liturgicalForeground.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if let weekMark {
+                WeekMarkArch(mark: weekMark)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
+        .padding(20)
         .background(palette.liturgicalBackground.color, in: RoundedRectangle(cornerRadius: Radius.lg))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Gold arch with the Ordinary Time week numeral, as on the forest banner.
+struct WeekMarkArch: View {
+    let mark: String
+
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        ZStack {
+            ArchOutline()
+                .stroke(palette.liturgicalAccent.color, lineWidth: 1.5)
+            Text(mark)
+                .font(AppFont.title(size: 22))
+                .foregroundStyle(palette.liturgicalAccent.color)
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+                .padding(.top, 8)
+        }
+        .frame(width: 84, height: 72)
+        .accessibilityLabel("Week \(mark)")
+    }
+}
+
+private nonisolated struct ArchOutline: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let radius = rect.width / 2
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + radius))
+        path.addArc(
+            center: CGPoint(x: rect.midX, y: rect.minY + radius),
+            radius: radius,
+            startAngle: .degrees(180),
+            endAngle: .degrees(0),
+            clockwise: false
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        return path
     }
 }
 
