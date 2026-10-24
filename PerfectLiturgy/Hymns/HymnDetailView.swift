@@ -7,6 +7,8 @@ struct HymnDetailView: View {
 
     @Environment(\.palette) private var palette
     @Environment(\.readingScale) private var readingScale
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.isWideLayout) private var isWide
     @Environment(\.modelContext) private var modelContext
     @Query private var hymns: [HymnRecord]
     @Query private var bookmarks: [HymnBookmark]
@@ -17,7 +19,7 @@ struct HymnDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showsChrome {
+            if showsChrome, !isWide || hymn == nil {
                 PLTopBar()
             }
             if let hymn {
@@ -40,9 +42,17 @@ struct HymnDetailView: View {
     private func detail(_ hymn: HymnRecord) -> some View {
         let saved = bookmarks.contains { $0.hymnId == hymn.id }
         let wide = !showsChrome
+        let tablet = isWide && showsChrome
         let titleSize = max(readingScale.size(for: .partTitle), wide ? 40 : 34)
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if tablet {
+                    HStack(spacing: 8) {
+                        backButton
+                        Spacer(minLength: 8)
+                        hymnActions(hymn, saved: saved)
+                    }
+                }
                 if wide {
                     HStack(alignment: .center) {
                         HStack(spacing: 8) {
@@ -75,23 +85,9 @@ struct HymnDetailView: View {
                     Text(String(hymn.hymnNumber))
                         .font(AppFont.title(size: max(36, 48 * CGFloat(readingScale.headings))))
                         .foregroundStyle(palette.emphasis.color)
-                    if !wide {
+                    if !wide, !tablet {
                         Spacer(minLength: 8)
-                        iconButton(systemName: saved ? "bookmark.fill" : "bookmark", label: saved ? "Remove saved hymn" : "Save hymn", filled: saved) {
-                            try? HymnImporter.toggleBookmark(hymn, in: modelContext)
-                        }
-                        ShareLink(item: shareText(hymn)) {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 16))
-                                .foregroundStyle(palette.foreground.color)
-                                .frame(width: ControlMetrics.minimumHeight, height: ControlMetrics.minimumHeight)
-                                .background(palette.card.color, in: RoundedRectangle(cornerRadius: Radius.md))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: Radius.md)
-                                        .strokeBorder(palette.border.color, lineWidth: 1)
-                                }
-                        }
-                        .accessibilityLabel("Share hymn")
+                        hymnActions(hymn, saved: saved)
                     }
                 }
                 Text(hymn.title)
@@ -145,6 +141,44 @@ struct HymnDetailView: View {
             .padding(.vertical, wide ? 28 : 20)
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var backButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(palette.foreground.color)
+                .frame(width: ControlMetrics.minimumHeight, height: ControlMetrics.minimumHeight)
+                .background(palette.card.color, in: RoundedRectangle(cornerRadius: Radius.md))
+                .overlay {
+                    RoundedRectangle(cornerRadius: Radius.md)
+                        .strokeBorder(palette.border.color, lineWidth: 1)
+                }
+        }
+        .buttonStyle(PressScaleButtonStyle())
+        .accessibilityLabel("Back")
+    }
+
+    private func hymnActions(_ hymn: HymnRecord, saved: Bool) -> some View {
+        HStack(spacing: 8) {
+            iconButton(systemName: saved ? "bookmark.fill" : "bookmark", label: saved ? "Remove saved hymn" : "Save hymn", filled: saved) {
+                try? HymnImporter.toggleBookmark(hymn, in: modelContext)
+            }
+            ShareLink(item: shareText(hymn)) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 16))
+                    .foregroundStyle(palette.foreground.color)
+                    .frame(width: ControlMetrics.minimumHeight, height: ControlMetrics.minimumHeight)
+                    .background(palette.card.color, in: RoundedRectangle(cornerRadius: Radius.md))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Radius.md)
+                            .strokeBorder(palette.border.color, lineWidth: 1)
+                    }
+            }
+            .accessibilityLabel("Share hymn")
         }
     }
 
