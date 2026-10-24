@@ -154,6 +154,7 @@ import UIKit
         .modelContainer(container)
         .environment(AppNavigation())
         .environment(packs)
+        .environment(AppSession(token: nil, store: MemorySessionStore()))
         .resolvePalette()
         .frame(width: 390, height: 844)
     let image = try await renderSaved(view, size: CGSize(width: 390, height: 844))

@@ -29,7 +29,14 @@ struct PerfectLiturgyApp: App {
                 .resolvePalette()
                 .preferredColorScheme(design.appearance.colorScheme)
                 .wideLayout()
-                .onOpenURL(perform: AuthReturn.handle)
+                .onOpenURL { url in
+                    Task {
+                        await session.accept(url, client: .live, context: HymnStore.shared.mainContext)
+                    }
+                }
+                .task {
+                    await session.restore(client: .live)
+                }
         }
     }
 }

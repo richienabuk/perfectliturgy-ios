@@ -13,4 +13,9 @@ final class AppNavigation {
     func showAccount() {
         path.append(AppRoute.account)
     }
+
+    func showSaved() {
+        path = NavigationPath()
+        tab = .saved
+    }
 }

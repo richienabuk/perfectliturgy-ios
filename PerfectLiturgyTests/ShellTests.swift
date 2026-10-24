@@ -35,14 +35,24 @@ import Testing
 }
 
 @Test(arguments: [
-    "perfectliturgy://auth",
-    "perfectliturgy://auth?session_token=abc",
-    "perfectliturgy://auth#token=abc",
+    ("perfectliturgy://auth?session_token=abc", "abc"),
+    ("perfectliturgy://auth?sessionToken=abc", "abc"),
+    ("perfectliturgy://auth?token=abc", "abc"),
+    ("perfectliturgy://auth?better-auth.session_token=abc", "abc"),
+    ("perfectliturgy://auth#token=abc", "abc"),
 ])
-func `auth return is accepted and ignored`(_ raw: String) throws {
+func `auth return reads the session token`(raw: String, expected: String) throws {
     let url = try #require(URL(string: raw))
     #expect(AuthReturn.accepts(url))
-    AuthReturn.handle(url)
+    #expect(AuthReturn.callback(from: url) == .session(token: expected))
+}
+
+@Test func `an auth return without a token is still the auth link`() throws {
+    let url = try #require(URL(string: "perfectliturgy://auth"))
+    #expect(AuthReturn.accepts(url))
+    #expect(AuthReturn.callback(from: url) == nil)
+    let failed = try #require(URL(string: "perfectliturgy://auth?error=access_denied"))
+    #expect(AuthReturn.callback(from: failed) == .failure)
 }
 
 @Test func `other schemes are not the auth return`() throws {

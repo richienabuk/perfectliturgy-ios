@@ -50,8 +50,7 @@ enum SavedRows {
 }
 
 struct SavedView: View {
-    var signedIn = false
-
+    @Environment(AppSession.self) private var session
     @Environment(AppNavigation.self) private var navigation
     @Environment(InstalledPacks.self) private var packs
     @Environment(\.palette) private var palette
@@ -68,7 +67,7 @@ struct SavedView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     header
                     if savedRows.isEmpty {
-                        Text(SavedRows.emptyNote(signedIn: signedIn))
+                        Text(SavedRows.emptyNote(signedIn: session.isSignedIn))
                             .font(AppFont.body())
                             .foregroundStyle(palette.mutedForeground.color)
                             .fixedSize(horizontal: false, vertical: true)
@@ -189,5 +188,6 @@ struct SavedView: View {
         .modelContainer(try! HymnStore.make(inMemory: true))
         .environment(AppNavigation())
         .environment(InstalledPacks(defaults: UserDefaults(suiteName: "saved-preview") ?? .standard))
+        .environment(AppSession(token: nil, store: MemorySessionStore()))
         .resolvePalette()
 }
