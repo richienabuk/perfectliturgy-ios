@@ -15,7 +15,7 @@ struct TodayView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PLTopBar()
+            PLTopBar(isTabRoot: true)
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     header

@@ -1,7 +1,10 @@
+import SwiftData
 import SwiftUI
 
 struct RouteScreen: View {
     let route: AppRoute
+
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         switch route {
@@ -32,7 +35,8 @@ struct RouteScreen: View {
         case .donate:
             DonateView()
         case .hymn(let id):
-            HymnDetailView(id: id)
+            // One local read, so the hymn is on the first frame of the push.
+            HymnDetailView(id: id, initialPage: HymnImporter.page(id: id, in: modelContext))
         }
     }
 }

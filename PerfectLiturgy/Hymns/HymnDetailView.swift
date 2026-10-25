@@ -5,13 +5,21 @@ struct HymnDetailView: View {
     let id: String
     var showsChrome: Bool = true
 
+    /// Pass a page already read from the store, so the first frame has the hymn on it.
+    /// Without one the screen reads it after it appears.
+    init(id: String, showsChrome: Bool = true, initialPage: HymnPage? = nil) {
+        self.id = id
+        self.showsChrome = showsChrome
+        _page = State(initialValue: initialPage)
+    }
+
     @Environment(\.palette) private var palette
     @Environment(\.readingScale) private var readingScale
     @Environment(\.dismiss) private var dismiss
     @Environment(\.isWideLayout) private var isWide
     @Environment(\.modelContext) private var modelContext
     @State private var page: HymnPage?
-    @State private var hymnPacks: [PackRecord] = []
+    private let packStore = HymnPackStore.shared
     @Query private var bookmarks: [HymnBookmark]
 
     var body: some View {
@@ -34,10 +42,11 @@ struct HymnDetailView: View {
             loadPage()
         }
         .task(id: id) {
-            hymnPacks = PackFiles.rowsForDisplay(root: DevotionLibrary.applicationSupport).filter { $0.type == "hymns" }
-            loadPage()
+            if page?.id != id {
+                loadPage()
+            }
             guard page != nil else { return }
-            try? HymnImporter.recordVisit(hymnID: id, in: modelContext)
+            recordVisitAfterTransition()
         }
     }
 
@@ -45,8 +54,19 @@ struct HymnDetailView: View {
         page = HymnImporter.page(id: id, in: modelContext)
     }
 
+    /// Saving the visit writes to disk. It waits for the push to finish, and it is not
+    /// cancelled if the reader goes back first: the hymn was opened.
+    private func recordVisitAfterTransition() {
+        let hymnID = id
+        let context = modelContext
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            try? HymnImporter.recordVisit(hymnID: hymnID, in: context)
+        }
+    }
+
     private func catalogueName(for hymn: HymnPage) -> String {
-        HymnLanguage.catalogueName(for: hymn.language, in: hymnPacks)
+        HymnLanguage.catalogueName(for: hymn.language, in: packStore.packs)
     }
 
     private func catalogueLine(_ hymn: HymnPage) -> String {

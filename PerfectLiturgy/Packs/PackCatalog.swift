@@ -1,6 +1,6 @@
 import Foundation
 
-struct PackRecord: Codable, Equatable, Sendable, Identifiable {
+nonisolated struct PackRecord: Codable, Equatable, Sendable, Identifiable {
     var packId: String
     var type: String
     var language: String?
@@ -82,7 +82,7 @@ struct PackRecord: Codable, Equatable, Sendable, Identifiable {
 }
 
 /// Type-specific catalog extras. Readings use `displayWindow` (`day`, `week`, or `month`).
-struct PackMetadata: Codable, Equatable, Sendable {
+nonisolated struct PackMetadata: Codable, Equatable, Sendable {
     var displayWindow: String?
 }
 
@@ -174,7 +174,7 @@ enum PackLocale {
     }
 }
 
-enum PackSeed {
+nonisolated enum PackSeed {
     static let rows: [PackRecord] = [
         row("hymns-en", type: "hymns", language: "en", name: "English Hymns", mode: "live"),
         row("hymns-la", type: "hymns", language: "la", name: "Latin Hymns", mode: "live"),
@@ -208,13 +208,18 @@ enum PackSeed {
     }
 }
 
+extension Notification.Name {
+    /// Posted after the saved pack list is written. Screens that show pack names read it again.
+    nonisolated static let packCatalogDidChange = Notification.Name("com.perfectliturgy.packCatalogDidChange")
+}
+
 /// The last catalog fetched from the API. `updatedAt` is when that fetch succeeded.
-struct StoredCatalog: Codable, Equatable, Sendable {
+nonisolated struct StoredCatalog: Codable, Equatable, Sendable {
     var packs: [PackRecord]
     var updatedAt: Date?
 }
 
-enum PackFiles {
+nonisolated enum PackFiles {
     static let catalogName = "catalog.json"
     static let revisionsKey = "packRevisions"
 
@@ -239,6 +244,12 @@ enum PackFiles {
         let stored = StoredCatalog(packs: packs, updatedAt: updatedAt)
         let data = try encoder.encode(stored)
         try data.write(to: catalogFile(root: root), options: .atomic)
+        NotificationCenter.default.post(name: .packCatalogDidChange, object: nil)
+    }
+
+    /// The hymn catalogues in the saved pack list. They name each hymn language on screen.
+    static func hymnRows(root: URL) -> [PackRecord] {
+        rowsForDisplay(root: root).filter { $0.type == "hymns" }
     }
 
     static func loadCatalog(root: URL) -> StoredCatalog? {

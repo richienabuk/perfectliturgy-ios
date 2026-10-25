@@ -90,6 +90,112 @@ import UIKit
     #expect(byID.map(\.id) == ["test-la-2"])
 }
 
+private let stanzaHymn = Data("""
+[{
+  "id": "test-en-stanza",
+  "language": "en",
+  "hymnNumber": 9100,
+  "title": "Test stanza hymn",
+  "lyrics": "Opening line only",
+  "sections": [
+    {"type": "verse", "content": "Opening line only"},
+    {"type": "verse", "content": "Zebra crossing in Noël"}
+  ]
+}]
+""".utf8)
+
+@Test func `a word that is only in a later stanza is found`() throws {
+    let container = try HymnStore.make(inMemory: true)
+    let context = container.mainContext
+    try HymnImporter.importData(stanzaHymn, into: context)
+    let hymn = try #require(try context.fetch(FetchDescriptor<HymnRecord>()).first)
+    let summary = hymn.summary
+
+    #expect(HymnSearch.matches(summary, filter: HymnFilter(text: "zebra")))
+    #expect(HymnSearch.matches(summary, filter: HymnFilter(text: "ZEBRA noel")))
+    #expect(!HymnSearch.matches(summary, filter: HymnFilter(text: "yak")))
+
+    // A query folded once gives the same answer as one folded per hymn.
+    let query = HymnQuery("zebra noel")
+    #expect(HymnSearch.matches(summary, filter: HymnFilter(), query: query))
+    #expect(query.words == ["zebra", "noel"])
+}
+
+@Test func `the search key does not repeat lyrics that come from the sections`() throws {
+    let lyrics = "One\nTwo"
+    let derived = HymnSearch.makeKey(title: "T", firstLine: "One", lyrics: lyrics, sections: ["One", "Two"])
+    let plain = HymnSearch.makeKey(title: "T", firstLine: "One", lyrics: lyrics)
+    #expect(derived == plain)
+}
+
+@Test func `an old search key is rebuilt once from the stored sections`() throws {
+    let container = try HymnStore.make(inMemory: true)
+    let context = container.mainContext
+    try HymnImporter.importData(stanzaHymn, into: context)
+    let hymn = try #require(try context.fetch(FetchDescriptor<HymnRecord>()).first)
+    hymn.searchKey = "test stanza hymn opening line only"
+    #expect(!HymnSearch.matches(hymn.summary, filter: HymnFilter(text: "zebra")))
+
+    let defaults = UserDefaults(suiteName: "search-key-\(UUID().uuidString)")!
+    try HymnImporter.rebuildSearchKeysIfNeeded(in: context, defaults: defaults)
+    #expect(HymnSearch.matches(hymn.summary, filter: HymnFilter(text: "zebra")))
+    #expect(defaults.integer(forKey: "hymns.searchKeyVersion") == HymnImporter.searchKeyVersion)
+
+    // Once the version is stored, a changed key is left alone.
+    hymn.searchKey = "changed"
+    try HymnImporter.rebuildSearchKeysIfNeeded(in: context, defaults: defaults)
+    #expect(hymn.searchKey == "changed")
+}
+
+@Test @MainActor func `the catalogue reader returns the list in order from a background context`() async throws {
+    let loaded = try importedFixtures()
+    let container = loaded.0
+    let expected = loaded.1
+        .sorted { ($0.language, $0.hymnNumber) < ($1.language, $1.hymnNumber) }
+        .map(\.summary)
+
+    let summaries = await HymnCatalogueReader.load(from: container)
+    #expect(summaries == expected)
+    #expect(!summaries.isEmpty)
+}
+
+@Test @MainActor func `the list loads once and a later load replaces it`() async throws {
+    let container = try HymnStore.make(inMemory: true)
+    let context = container.mainContext
+    let model = HymnListModel()
+    let inputs = HymnListModel.Inputs(installed: ["en"])
+    #expect(!model.isLoaded)
+
+    await model.load(from: container) { inputs }
+    #expect(model.isLoaded)
+    #expect(model.filtered.isEmpty)
+
+    try HymnImporter.importData(stanzaHymn, into: context)
+    await model.load(from: container) { inputs }
+    #expect(model.filtered.map(\.id) == ["test-en-stanza"])
+    #expect(model.rows.map(\.id) == ["test-en-stanza"])
+}
+
+@Test @MainActor func `the hymn pack store reads the saved list once and again after it is saved`() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("hymn-packs-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = HymnPackStore(root: root)
+    await store.reload()
+    // No saved list yet: the seeded English and Latin rows stay.
+    #expect(store.packs.map(\.packId) == ["hymns-en", "hymns-la"])
+
+    try PackFiles.saveCatalog(
+        [
+            PackRecord(packId: "hymns-efi", type: "hymns", language: "efi", languageName: "Efik", displayName: "Efik Hymns", mode: "download"),
+            PackRecord(packId: "prayers-en", type: "prayers", language: "en", displayName: "Prayers", mode: "download"),
+        ],
+        root: root
+    )
+    await store.reload()
+    #expect(store.packs.map(\.packId) == ["hymns-efi"])
+    #expect(HymnLanguage.name(for: "efi", in: store.packs) == "Efik")
+}
+
 @Test func `a season and a mass part together return only hymns with both`() throws {
     let loaded = try importedFixtures()
     defer { _ = loaded.0 }
@@ -303,4 +409,50 @@ private func importedFixtures() throws -> (ModelContainer, [HymnRecord]) {
     }
     let hymns = try context.fetch(FetchDescriptor<HymnRecord>(sortBy: [SortDescriptor(\.hymnNumber)]))
     return (container, hymns)
+}
+
+@Test func `a fitted sheet remembers its height`() {
+    let key = "test.\(UUID().uuidString)"
+    defer { UserDefaults.standard.removeObject(forKey: "sheetHeight.\(key)") }
+    #expect(SheetHeights.remembered(key) == nil)
+    SheetHeights.remember(312.5, for: key)
+    #expect(SheetHeights.remembered(key) == 312.5)
+}
+
+@Test @MainActor func `refiltering the bundled catalogues stays fast`() async throws {
+    let container = try HymnStore.make(inMemory: true)
+    let context = container.mainContext
+    let bundle = Bundle(for: DesignPreferences.self)
+    for name in HymnBundles.resourceNames {
+        let url = try #require(HymnBundles.url(for: name, in: bundle))
+        try HymnImporter.importData(try Data(contentsOf: url), into: context)
+    }
+    let summaries = await HymnCatalogueReader.load(from: container)
+    #expect(summaries.count > 300)
+
+    let model = HymnListModel()
+    var inputs = HymnListModel.Inputs(installed: ["en", "la"], catalogues: PackSeed.rows.filter { $0.type == "hymns" })
+    model.setCatalogue(summaries, inputs: inputs)
+
+    // Typing, a language change, and a season change, over and over.
+    let queries = ["", "l", "lo", "lord", "lord of", "gloria", "adeste", "ave maria"]
+    let clock = ContinuousClock()
+    let runs = 100
+    let elapsed = clock.measure {
+        for index in 0..<runs {
+            inputs.query = queries[index % queries.count]
+            inputs.language = index % 3 == 0 ? "en" : nil
+            inputs.season = index % 5 == 0 ? "advent" : nil
+            model.refilter(inputs, force: true)
+        }
+    }
+    let average = elapsed / runs
+    // A Debug build on a simulator is several times slower than Release on a device.
+    #if DEBUG
+    let limit = Duration.milliseconds(25)
+    #else
+    let limit = Duration.milliseconds(5)
+    #endif
+    #expect(average < limit, "average refilter \(average)")
+    print("average refilter over \(runs) runs: \(average)")
 }

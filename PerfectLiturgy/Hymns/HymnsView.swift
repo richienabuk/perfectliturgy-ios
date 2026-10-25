@@ -13,7 +13,9 @@ struct HymnsView: View {
     @Environment(InstalledPacks.self) private var packs
     @Environment(\.modelContext) private var modelContext
 
-    @State private var catalogue: [HymnSummary] = []
+    @State private var model = HymnListModel()
+    /// Read once, off the main thread. A pushed screen and a tab change do not read the file again.
+    private let packStore = HymnPackStore.shared
     @Query private var bookmarks: [HymnBookmark]
 
     @State private var query = ""
@@ -24,14 +26,13 @@ struct HymnsView: View {
     @State private var showsFilters = false
     @State private var showsLanguages = false
     @State private var openDownloadsAfterLanguage = false
-    @State private var hymnPacks: [PackRecord] = []
-    @State private var visibleCount = HymnFilter.pageSize
+    @State private var scrollResetToken = 0
     @State private var selectedID: String?
     @State private var debounce: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
-            PLTopBar()
+            PLTopBar(isTabRoot: true)
             if splitsColumns {
                 HStack(spacing: 0) {
                     listColumn
@@ -56,33 +57,40 @@ struct HymnsView: View {
         }
         .sheet(isPresented: $showsLanguages, onDismiss: openDownloadsIfNeeded) {
             HymnLanguageSheet(
-                languages: languages,
-                catalogues: hymnPacks,
+                languages: model.languages,
+                catalogues: packStore.packs,
                 selected: activeLanguage,
                 onSelect: { code in
-                    Task { @MainActor in
-                        await Task.yield()
+                    // The list refilters in a moment now, so there is nothing to wait for.
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
                         language = code
                     }
                 },
                 onDownload: { openDownloadsAfterLanguage = true }
             )
         }
-        .onChange(of: language) { _, _ in visibleCount = HymnFilter.pageSize }
-        .onChange(of: season) { _, _ in visibleCount = HymnFilter.pageSize }
-        .onChange(of: massPart) { _, _ in visibleCount = HymnFilter.pageSize }
+        .onChange(of: language) { _, _ in applyFilters() }
+        .onChange(of: season) { _, _ in applyFilters() }
+        .onChange(of: massPart) { _, _ in applyFilters() }
+        .onChange(of: packs.ids) { _, _ in applyFilters() }
+        .onChange(of: packStore.packs) { _, _ in model.refilter(filterInputs) }
         .task {
-            loadCatalogue()
-            reloadHymnPacks()
+            // The task restarts each time the tab appears. The list loads once.
+            guard !model.isLoaded else { return }
+            await loadCatalogue()
         }
-        .onAppear { reloadHymnPacks() }
         .onReceive(NotificationCenter.default.publisher(for: .hymnStoreDidChange)) { _ in
-            loadCatalogue()
+            Task { await loadCatalogue() }
         }
     }
 
     private var listColumn: some View {
-        VStack(alignment: .leading, spacing: splitsColumns ? 14 : 12) {
+        // Read once per pass. The rows below take these as plain values.
+        let saved = savedIDs
+        let selectedRow = splitsColumns ? activeID : nil
+        return VStack(alignment: .leading, spacing: splitsColumns ? 14 : 12) {
             listHeader
             languageButton
             searchField
@@ -92,34 +100,48 @@ struct HymnsView: View {
                 phoneCountRow
             }
             filterBar
-            ScrollView {
-                LazyVStack(spacing: splitsColumns ? 8 : 0) {
-                    if filtered.isEmpty {
-                        Text("No hymns match.")
-                            .font(AppFont.body())
-                            .foregroundStyle(palette.mutedForeground.color)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 12)
-                    } else {
-                        ForEach(visible) { hymn in
-                            row(hymn)
-                                .onAppear {
-                                    if hymn.id == visible.last?.id, visibleCount < filtered.count {
-                                        visibleCount += HymnFilter.pageSize
-                                    }
-                                }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: splitsColumns ? 8 : 0) {
+                        if model.isLoaded, model.rows.isEmpty {
+                            Text("No hymns match.")
+                                .font(AppFont.body())
+                                .foregroundStyle(palette.mutedForeground.color)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 12)
+                        } else {
+                            ForEach(model.rows) { item in
+                                HymnListRow(
+                                    item: item,
+                                    isSaved: saved.contains(item.id),
+                                    isSelected: item.id == selectedRow,
+                                    splitsColumns: splitsColumns,
+                                    palette: palette,
+                                    onOpen: open,
+                                    onToggleSaved: toggleSaved
+                                )
+                                .equatable()
+                            }
+                        }
+                        if !splitsColumns {
+                            Text("Search is limited to the hymn catalogue.")
+                                .font(AppFont.interface(size: 12))
+                                .foregroundStyle(palette.mutedForeground.color)
+                                .frame(maxWidth: .infinity)
+                                .multilineTextAlignment(.center)
+                                .padding(.top, 18)
                         }
                     }
-                    if !splitsColumns {
-                        Text("Search is limited to the hymn catalogue.")
-                            .font(AppFont.interface(size: 12))
-                            .foregroundStyle(palette.mutedForeground.color)
-                            .frame(maxWidth: .infinity)
-                            .multilineTextAlignment(.center)
-                            .padding(.top, 18)
+                    .padding(.bottom, 24)
+                }
+                .onChange(of: scrollResetToken) { _, _ in
+                    guard let first = model.rows.first?.id else { return }
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        proxy.scrollTo(first, anchor: .top)
                     }
                 }
-                .padding(.bottom, 24)
             }
         }
         .padding(.horizontal, splitsColumns ? 22 : 20)
@@ -263,7 +285,7 @@ struct HymnsView: View {
                 try? await Task.sleep(for: .milliseconds(300))
                 guard !Task.isCancelled else { return }
                 debouncedQuery = newValue
-                visibleCount = HymnFilter.pageSize
+                applyFilters()
             }
         }
     }
@@ -337,152 +359,38 @@ struct HymnsView: View {
         .accessibilityLabel("Filter hymns")
     }
 
-    private func row(_ hymn: HymnSummary) -> some View {
-        let saved = savedIDs.contains(hymn.id)
-        let selected = splitsColumns && hymn.id == activeID
-        return HStack(alignment: .center, spacing: 12) {
-            Button {
-                open(hymn)
-            } label: {
-                HStack(alignment: .center, spacing: 12) {
-                    if splitsColumns {
-                        musicMark
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(hymn.title)
-                                .font(AppFont.interface(size: 16, weight: .semibold))
-                                .foregroundStyle(palette.foreground.color)
-                                .multilineTextAlignment(.leading)
-                            Text(rowLine(hymn))
-                                .font(AppFont.interface(size: 13))
-                                .foregroundStyle(palette.mutedForeground.color)
-                                .lineLimit(1)
-                        }
-                        Spacer(minLength: 8)
-                        Text(String(hymn.hymnNumber))
-                            .font(AppFont.interface(size: 14))
-                            .foregroundStyle(palette.mutedForeground.color)
-                    } else {
-                        numberTile(hymn.hymnNumber)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(hymn.title)
-                                .font(AppFont.interface(size: 16, weight: .semibold))
-                                .foregroundStyle(palette.foreground.color)
-                                .multilineTextAlignment(.leading)
-                            Text(rowLine(hymn))
-                                .font(AppFont.interface(size: 13))
-                                .foregroundStyle(palette.mutedForeground.color)
-                                .lineLimit(2)
-                        }
-                        Spacer(minLength: 4)
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(hymn.hymnNumber), \(hymn.title)")
-            bookmarkButton(saved: saved, id: hymn.id)
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(palette.mutedForeground.color)
-        }
-        .padding(.horizontal, splitsColumns ? 10 : 0)
-        .padding(.vertical, splitsColumns ? 10 : 12)
-        .background(selected ? palette.card.color : Color.clear, in: RoundedRectangle(cornerRadius: Radius.lg))
-        .overlay {
-            if selected {
-                RoundedRectangle(cornerRadius: Radius.lg)
-                    .strokeBorder(palette.border.color, lineWidth: 1)
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if !splitsColumns {
-                Rectangle()
-                    .fill(palette.border.color)
-                    .frame(height: 1)
-            }
-        }
+    private func loadCatalogue() async {
+        await model.load(from: modelContext.container) { filterInputs }
     }
 
-    private func numberTile(_ number: Int) -> some View {
-        Text(String(number))
-            .font(AppFont.title(size: 22))
-            .foregroundStyle(palette.emphasis.color)
-            .minimumScaleFactor(0.55)
-            .lineLimit(1)
-            .frame(width: 52, height: 52)
-            .background(palette.card.color, in: RoundedRectangle(cornerRadius: Radius.lg))
-            .overlay {
-                RoundedRectangle(cornerRadius: Radius.lg)
-                    .strokeBorder(palette.border.color, lineWidth: 1)
-            }
+    /// The values the list is derived from. Pass them to the model when any of them changes.
+    private var filterInputs: HymnListModel.Inputs {
+        HymnListModel.Inputs(
+            installed: Set(packs.hymnLanguages),
+            language: language,
+            season: season,
+            massPart: massPart,
+            query: debouncedQuery,
+            catalogues: packStore.packs
+        )
     }
 
-    private var musicMark: some View {
-        Image(systemName: "music.note")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(palette.emphasis.color)
-            .frame(width: 36, height: 36)
-            .background(palette.card.color, in: RoundedRectangle(cornerRadius: Radius.md))
-            .overlay {
-                RoundedRectangle(cornerRadius: Radius.md)
-                    .strokeBorder(palette.border.color, lineWidth: 1)
-            }
-    }
-
-    private func bookmarkButton(saved: Bool, id: String) -> some View {
-        Button {
-            guard let hymn = HymnImporter.record(id: id, in: modelContext) else { return }
-            try? HymnImporter.toggleBookmark(hymn, in: modelContext)
-        } label: {
-            Image(systemName: saved ? "bookmark.fill" : "bookmark")
-                .font(.system(size: 16))
-                .foregroundStyle(saved ? palette.emphasis.color : palette.foreground.color)
-                .frame(width: ControlMetrics.minimumHeight, height: ControlMetrics.minimumHeight)
-        }
-        .buttonStyle(PressScaleButtonStyle())
-        .accessibilityLabel(saved ? "Remove saved hymn" : "Save hymn")
-    }
-
-    private func rowLine(_ hymn: HymnSummary) -> String {
-        HymnLabels.rowLine(language: hymn.language, seasons: hymn.seasons, massParts: hymn.massParts, catalogues: hymnPacks)
-    }
-
-    private func loadCatalogue() {
-        catalogue = HymnImporter.catalogue(in: modelContext)
-    }
-
-    private func reloadHymnPacks() {
-        hymnPacks = PackFiles.rowsForDisplay(root: DevotionLibrary.applicationSupport).filter { $0.type == "hymns" }
-    }
-
-    private var languages: [String] {
-        let installed = Set(packs.hymnLanguages)
-        return HymnLanguage.ordered(catalogue.map(\.language).filter { installed.contains($0) })
+    /// A filter changed. Refilter once, then show the first hymn.
+    private func applyFilters() {
+        model.refilter(filterInputs)
+        scrollResetToken &+= 1
     }
 
     /// Nil shows every catalogue. A stored choice is kept only while that language is on the device.
-    private var activeLanguage: String? {
-        guard let language, languages.contains(language) else { return nil }
-        return language
-    }
+    private var activeLanguage: String? { model.activeLanguage }
 
     private var languageButtonTitle: String {
         guard let activeLanguage else { return "All languages" }
-        return HymnLanguage.name(for: activeLanguage, in: hymnPacks)
+        return HymnLanguage.name(for: activeLanguage, in: packStore.packs)
     }
 
-    private var filter: HymnFilter {
-        HymnFilter(text: debouncedQuery, language: activeLanguage, season: season, massPart: massPart)
-    }
-
-    private var filtered: [HymnSummary] {
-        let installed = Set(packs.hymnLanguages)
-        return catalogue.filter { installed.contains($0.language) && HymnSearch.matches($0, filter: filter) }
-    }
-
-    private var visible: [HymnSummary] {
-        Array(filtered.prefix(visibleCount))
-    }
+    /// Stored by the model. Reading it does not filter the catalogue.
+    private var filtered: [HymnSummary] { model.filtered }
 
     private var savedIDs: Set<String> {
         Set(bookmarks.map(\.hymnId))
@@ -505,11 +413,16 @@ struct HymnsView: View {
         return splitsColumns ? filtered.first?.id : nil
     }
 
-    private func open(_ hymn: HymnSummary) {
+    private func open(_ id: String) {
         if splitsColumns {
-            selectedID = hymn.id
+            selectedID = id
         } else {
-            navigation.path.append(AppRoute.hymn(id: hymn.id))
+            navigation.path.append(AppRoute.hymn(id: id))
         }
+    }
+
+    private func toggleSaved(_ id: String) {
+        guard let hymn = HymnImporter.record(id: id, in: modelContext) else { return }
+        try? HymnImporter.toggleBookmark(hymn, in: modelContext)
     }
 }

@@ -76,7 +76,7 @@ struct ReadingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PLTopBar()
+            PLTopBar(isTabRoot: true)
             phoneBody
         }
         .background(palette.background.color)

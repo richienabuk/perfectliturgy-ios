@@ -134,6 +134,10 @@ enum HymnBundles {
 enum HymnImporter {
     private static let logger = Logger(subsystem: "com.perfectliturgy", category: "hymns")
     private static let signatureKey = "hymns.importSignature"
+    private static let searchKeyVersionKey = "hymns.searchKeyVersion"
+    /// Raise this when `HymnSearch.makeKey` changes. Saved hymns then get a new key once.
+    /// 2: the key holds section text, so a search no longer folds lyrics for every hymn.
+    static let searchKeyVersion = 2
 
     static func importBundledIfNeeded(
         into context: ModelContext,
@@ -141,6 +145,7 @@ enum HymnImporter {
         defaults: UserDefaults = .standard
     ) throws {
         try removeFixtures(in: context)
+        try rebuildSearchKeysIfNeeded(in: context, defaults: defaults)
         let urls = HymnBundles.urls(in: bundle)
         let signature = urls.map { url in
             let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
@@ -177,6 +182,28 @@ enum HymnImporter {
         try save(context)
     }
 
+    /// Builds the search key again for every saved hymn, from its stored text.
+    /// Downloaded languages are not in the app bundle, so this reads the store and not the files.
+    static func rebuildSearchKeysIfNeeded(in context: ModelContext, defaults: UserDefaults) throws {
+        guard defaults.integer(forKey: searchKeyVersionKey) != searchKeyVersion else { return }
+        try rebuildSearchKeys(in: context)
+        defaults.set(searchKeyVersion, forKey: searchKeyVersionKey)
+    }
+
+    static func rebuildSearchKeys(in context: ModelContext) throws {
+        let hymns = try context.fetch(FetchDescriptor<HymnRecord>())
+        guard !hymns.isEmpty else { return }
+        for hymn in hymns {
+            hymn.searchKey = HymnSearch.makeKey(
+                title: hymn.title,
+                firstLine: hymn.firstLine,
+                lyrics: hymn.lyrics,
+                sections: hymn.orderedSections.map(\.content)
+            )
+        }
+        try save(context)
+    }
+
     /// Fixture rows use ids such as `test-en-1`. They are for tests, not the hymn list.
     private static func removeFixtures(in context: ModelContext) throws {
         let descriptor = FetchDescriptor<HymnRecord>(predicate: #Predicate { $0.id.starts(with: "test-") })
@@ -204,20 +231,9 @@ enum HymnImporter {
         NotificationCenter.default.post(name: .hymnStoreDidChange, object: context)
     }
 
-    /// Hymns still in the store, copied so a screen never reads a row after it is removed.
-    static func catalogue(in context: ModelContext) -> [HymnSummary] {
-        let descriptor = FetchDescriptor<HymnRecord>(sortBy: [
-            SortDescriptor(\.language),
-            SortDescriptor(\.hymnNumber),
-        ])
-        let records = (try? context.fetch(descriptor)) ?? []
-        return records.compactMap { hymn in
-            guard !hymn.isDeleted else { return nil }
-            return hymn.summary
-        }
-    }
-
     static func page(id: String, in context: ModelContext) -> HymnPage? {
+        let signpost = Performance.signposter.beginInterval("hymns.page")
+        defer { Performance.signposter.endInterval("hymns.page", signpost) }
         guard let hymn = record(id: id, in: context) else { return nil }
         return hymn.page
     }
@@ -346,7 +362,12 @@ enum HymnImporter {
         hymn.isPublicDomain = payload.isPublicDomain
         hymn.permissionGranted = payload.permissionGranted
         hymn.backgroundNotes = payload.backgroundNotes
-        hymn.searchKey = HymnSearch.makeKey(title: payload.title, firstLine: firstLine, lyrics: lyrics)
+        hymn.searchKey = HymnSearch.makeKey(
+            title: payload.title,
+            firstLine: firstLine,
+            lyrics: lyrics,
+            sections: sections.map(\.content)
+        )
         for section in hymn.sections {
             context.delete(section)
         }

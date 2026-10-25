@@ -6,7 +6,6 @@ struct HymnFilterSheet: View {
 
     @Environment(\.palette) private var palette
     @Environment(\.dismiss) private var dismiss
-    @State private var sheetHeight: CGFloat = 360
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -36,7 +35,7 @@ struct HymnFilterSheet: View {
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.background.color)
-        .fittedBottomSheet(height: $sheetHeight)
+        .fittedBottomSheet(key: "hymn.filter", estimate: 360)
     }
 
     private func sheetTitle(_ title: String) -> some View {
@@ -178,7 +177,6 @@ struct HymnLanguageSheet: View {
 
     @Environment(\.palette) private var palette
     @Environment(\.dismiss) private var dismiss
-    @State private var sheetHeight: CGFloat = 360
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -218,7 +216,8 @@ struct HymnLanguageSheet: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.background.color)
-        .fittedBottomSheet(height: $sheetHeight)
+        // One height per row count, so a list of three languages is not sized as a list of one.
+        .fittedBottomSheet(key: "hymn.language.\(languages.count)", estimate: 300)
     }
 
     private var header: some View {
@@ -287,50 +286,5 @@ struct HymnLanguageSheet: View {
         .buttonStyle(PressScaleButtonStyle())
         .accessibilityLabel(title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-struct SheetHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
-extension View {
-    func fittedBottomSheet(height: Binding<CGFloat>) -> some View {
-        modifier(FittedBottomSheet(height: height))
-    }
-}
-
-struct FittedBottomSheet: ViewModifier {
-    @Binding var height: CGFloat
-    @Environment(\.palette) private var palette
-
-    func body(content: Content) -> some View {
-        let bottom = InterfaceAnchor.window.safeAreaInsets.bottom
-        content
-            .fixedSize(horizontal: false, vertical: true)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(key: SheetHeightKey.self, value: proxy.size.height)
-                }
-            }
-            .onPreferenceChange(SheetHeightKey.self) { measured in
-                // The sheet's own bottom inset flips once the detent grows to fit it.
-                // Adding that inset back into the detent makes the height chase itself.
-                let next = measured + bottom
-                guard next > 1, abs(height - next) > 1 else { return }
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) {
-                    height = next
-                }
-            }
-            .presentationDetents([.height(max(height, 1))])
-            .presentationDragIndicator(.visible)
-            .presentationCornerRadius(Radius.sheet)
-            .presentationBackground(palette.background.color)
     }
 }

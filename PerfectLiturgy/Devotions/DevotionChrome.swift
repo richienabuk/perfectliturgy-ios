@@ -89,7 +89,6 @@ struct DevotionLanguageSheet: View {
 
     @Environment(\.palette) private var palette
     @Environment(\.dismiss) private var dismiss
-    @State private var sheetHeight: CGFloat = 320
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -133,7 +132,7 @@ struct DevotionLanguageSheet: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.background.color)
-        .fittedBottomSheet(height: $sheetHeight)
+        .fittedBottomSheet(key: "devotion.language.\(languages.count)", estimate: 320)
     }
 
     private var header: some View {

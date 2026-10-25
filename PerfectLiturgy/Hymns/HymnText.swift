@@ -124,7 +124,6 @@ nonisolated struct HymnSummary: Equatable, Sendable, Identifiable {
     var title: String
     var firstLine: String
     var searchKey: String
-    var sectionText: String
     var seasons: [String]
     var massParts: [String]
     var topics: [String]
@@ -160,12 +159,44 @@ nonisolated struct HymnFilter: Equatable, Sendable {
     static let massParts = ["entrance", "offertory", "communion", "recessional"]
 }
 
+/// A search typed by the user, folded once. Build it once per search, not once per hymn.
+nonisolated struct HymnQuery: Equatable, Sendable {
+    /// The text with outer spaces removed, as typed.
+    let trimmed: String
+    /// Set when the text is only digits.
+    let isNumber: Bool
+    let number: Int?
+    /// Lowercase words without accents.
+    let words: [String]
+
+    init(_ text: String) {
+        trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        isNumber = !trimmed.isEmpty && trimmed.allSatisfy(\.isNumber)
+        number = isNumber ? Int(trimmed) : nil
+        words = AccentFold.fold(trimmed).split(whereSeparator: \.isWhitespace).map(String.init)
+    }
+
+    var isEmpty: Bool { trimmed.isEmpty }
+}
+
 nonisolated enum HymnSearch {
-    static func makeKey(title: String, firstLine: String, lyrics: String) -> String {
-        AccentFold.fold([title, firstLine, lyrics].joined(separator: "\n"))
+    /// The text a search reads. It is folded once, when a hymn is saved, so a search only compares.
+    /// Section text is added when the stored lyrics do not already hold it.
+    static func makeKey(title: String, firstLine: String, lyrics: String, sections: [String] = []) -> String {
+        var parts = [title, firstLine, lyrics]
+        let sectionText = sections.joined(separator: "\n")
+        if !sectionText.isEmpty, sectionText != lyrics {
+            parts.append(sectionText)
+        }
+        return AccentFold.fold(parts.joined(separator: "\n"))
     }
 
     static func matches(_ hymn: HymnSummary, filter: HymnFilter) -> Bool {
+        matches(hymn, filter: filter, query: HymnQuery(filter.text))
+    }
+
+    /// Use this in a loop. The query is folded once by the caller.
+    static func matches(_ hymn: HymnSummary, filter: HymnFilter, query: HymnQuery) -> Bool {
         if let language = filter.language, !language.isEmpty, hymn.language != language {
             return false
         }
@@ -175,7 +206,7 @@ nonisolated enum HymnSearch {
         if let part = filter.massPart, !partMatches(stored: hymn.massParts, filter: part) {
             return false
         }
-        return textMatches(hymn, query: filter.text)
+        return textMatches(hymn, query: query)
     }
 
     static func seasonMatches(stored: [String], filter: String) -> Bool {
@@ -189,19 +220,19 @@ nonisolated enum HymnSearch {
     }
 
     static func textMatches(_ hymn: HymnSummary, query: String) -> Bool {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return true }
-        if trimmed.allSatisfy(\.isNumber) {
-            return hymn.hymnNumber == Int(trimmed) || hymn.id.compare(trimmed, options: .caseInsensitive) == .orderedSame
+        textMatches(hymn, query: HymnQuery(query))
+    }
+
+    static func textMatches(_ hymn: HymnSummary, query: HymnQuery) -> Bool {
+        guard !query.isEmpty else { return true }
+        if query.isNumber {
+            return hymn.hymnNumber == query.number || hymn.id.compare(query.trimmed, options: .caseInsensitive) == .orderedSame
         }
-        if hymn.id.compare(trimmed, options: .caseInsensitive) == .orderedSame {
+        if hymn.id.compare(query.trimmed, options: .caseInsensitive) == .orderedSame {
             return true
         }
-        let folded = AccentFold.fold(trimmed)
-        let words = folded.split(whereSeparator: \.isWhitespace).map(String.init)
-        guard !words.isEmpty else { return true }
-        let haystack = hymn.searchKey + "\n" + AccentFold.fold(hymn.sectionText)
-        return words.allSatisfy { haystack.contains($0) }
+        guard !query.words.isEmpty else { return true }
+        return query.words.allSatisfy { hymn.searchKey.contains($0) }
     }
 }
 
@@ -386,21 +417,6 @@ extension HymnRecord {
         }
     }
 
-    var summary: HymnSummary {
-        HymnSummary(
-            id: id,
-            language: language,
-            hymnNumber: hymnNumber,
-            title: title,
-            firstLine: firstLine,
-            searchKey: searchKey,
-            sectionText: orderedSections.map(\.content).joined(separator: "\n"),
-            seasons: seasons,
-            massParts: massParts,
-            topics: topics
-        )
-    }
-
     var page: HymnPage {
         let texts = sectionTexts
         let hasMedia = !audioURLs.isEmpty || !videoURLs.isEmpty || !sheetMusicURLs.isEmpty
@@ -442,6 +458,23 @@ extension HymnRecord {
             audioURLs: audioURLs,
             videoURLs: videoURLs,
             sheetMusicURLs: sheetMusicURLs
+        )
+    }
+}
+
+/// The list row. It reads no relationship, so a background context can build it.
+nonisolated extension HymnRecord {
+    var summary: HymnSummary {
+        HymnSummary(
+            id: id,
+            language: language,
+            hymnNumber: hymnNumber,
+            title: title,
+            firstLine: firstLine,
+            searchKey: searchKey,
+            seasons: seasons,
+            massParts: massParts,
+            topics: topics
         )
     }
 }

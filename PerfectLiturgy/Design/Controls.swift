@@ -295,12 +295,16 @@ struct ReadingText: View {
 }
 
 struct PLTopBar: View {
+    /// A tab's own screen. It never shows a back button, and it does not read the navigation
+    /// path, so pushing a screen does not redraw the bar on every tab.
+    var isTabRoot = false
+
     @Environment(\.palette) private var palette
     @Environment(\.dismiss) private var dismiss
     @Environment(\.isWideLayout) private var isWide
     @Environment(AppNavigation.self) private var navigation
 
-    private var showsBack: Bool { !navigation.path.isEmpty }
+    private var showsBack: Bool { !isTabRoot && !navigation.path.isEmpty }
 
     var body: some View {
         if isWide && !showsBack {

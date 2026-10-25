@@ -241,7 +241,6 @@ private struct SignInSheet: View {
 
     @Environment(\.palette) private var palette
     @Environment(\.dismiss) private var dismiss
-    @State private var sheetHeight: CGFloat = 280
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -276,6 +275,6 @@ private struct SignInSheet: View {
         .padding(.bottom, 20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.background.color)
-        .fittedBottomSheet(height: $sheetHeight)
+        .fittedBottomSheet(key: "downloads.signIn", estimate: 280)
     }
 }

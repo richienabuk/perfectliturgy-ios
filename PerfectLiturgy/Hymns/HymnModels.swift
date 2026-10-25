@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 @Model
-final class HymnRecord {
+nonisolated final class HymnRecord {
     @Attribute(.unique) var id: String
     var language: String
     var hymnNumber: Int
@@ -77,7 +77,7 @@ final class HymnRecord {
 }
 
 @Model
-final class HymnSectionRecord {
+nonisolated final class HymnSectionRecord {
     var id: String
     var typeRaw: String
     var label: String
