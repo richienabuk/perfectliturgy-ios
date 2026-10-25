@@ -43,13 +43,13 @@ final class InstalledPacks {
         ids.contains(id)
     }
 
-    /// Installed languages for one devotion, English and Latin first.
+    /// Installed language codes for one devotion. Names and order come from the pack list.
     func languages(for kind: DevotionKind) -> [String] {
         codes(withPrefix: "\(kind.rawValue)-")
     }
 
     var hymnLanguages: [String] {
-        codes(withPrefix: "hymns-")
+        codes(withPrefix: "\(PackLanguages.hymnsType)-")
     }
 
     func install(_ id: String) {
@@ -69,6 +69,6 @@ final class InstalledPacks {
             let code = String(id.dropFirst(prefix.count))
             return code.isEmpty ? nil : code
         }
-        return HymnLanguage.ordered(codes)
+        return Array(Set(codes)).sorted()
     }
 }

@@ -226,7 +226,7 @@ Heading "Saved". Support "Keep what you want close at hand." Empty and signed ou
 
 ### Devotions
 
-Language control lists installed languages, English and Latin first, and offers Downloads. A missing language says it is not on the device and opens Downloads. Reading scales apply.
+The language control lists only the installed languages of that pack type, named by the pack list, and offers Downloads. The default is English while it is installed, else the first listed. The choice is kept per pack type, across screens and launches, so Hymns in Latin leaves Prayers in English. Only Hymns adds "All languages". A missing language says it is not on the device and opens Downloads. Reading scales apply.
 
 **Order of Mass.** Scroll parts. Each part has a title, optional summary, and items. An item has a title, optional rubric, optional text, and optional response. Newlines stay.
 

@@ -3,7 +3,8 @@ import UIKit
 
 struct StationsView: View {
     @Environment(InstalledPacks.self) private var packs
-    @Environment(DevotionSession.self) private var session
+    @Environment(LanguageSelection.self) private var selection
+    private let catalog = PackCatalogStore.shared
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.palette) private var palette
     @Environment(\.splitsColumns) private var splitsColumns
@@ -13,7 +14,7 @@ struct StationsView: View {
     @State private var selectedOrder: Int?
 
     private var choice: DevotionLanguageChoice {
-        DevotionLanguageChoice(requested: session.code(for: .stations), installed: packs.languages(for: .stations))
+        DevotionLanguageChoice(.stations, requested: selection.code(for: .stations), installed: packs.languages(for: .stations), catalog: catalog.packs)
     }
 
     private var stations: [Station]? {
@@ -37,11 +38,11 @@ struct StationsView: View {
             }
         }
         .sheet(isPresented: $showsLanguages, onDismiss: openDownloadsIfNeeded) {
-            DevotionLanguageSheet(
-                kind: .stations,
-                languages: packs.languages(for: .stations),
+            LanguageSheet(
+                title: DevotionKind.stations.languageTitle,
+                languages: choice.languages,
                 selected: choice.active,
-                onSelect: { session.select($0, for: .stations) },
+                onSelect: { selection.select($0, for: .stations) },
                 onDownload: { openDownloads = true }
             )
         }
@@ -101,7 +102,7 @@ struct StationsView: View {
     }
 
     private var languageButton: some View {
-        DevotionLanguageButton(title: choice.buttonTitle, accessibilityLabel: "Stations language") {
+        LanguageButton(title: choice.buttonTitle, accessibilityLabel: "Stations language") {
             showsLanguages = true
         }
     }
@@ -127,7 +128,8 @@ struct StationView: View {
     var onStep: ((Int) -> Void)? = nil
 
     @Environment(InstalledPacks.self) private var packs
-    @Environment(DevotionSession.self) private var session
+    @Environment(LanguageSelection.self) private var selection
+    private let catalog = PackCatalogStore.shared
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
@@ -136,7 +138,7 @@ struct StationView: View {
     @State private var openDownloads = false
 
     private var choice: DevotionLanguageChoice {
-        DevotionLanguageChoice(requested: session.code(for: .stations), installed: packs.languages(for: .stations))
+        DevotionLanguageChoice(.stations, requested: selection.code(for: .stations), installed: packs.languages(for: .stations), catalog: catalog.packs)
     }
 
     private var stations: [Station] {
@@ -161,11 +163,11 @@ struct StationView: View {
         }
         .accessibilityIdentifier("station.\(order)")
         .sheet(isPresented: $showsLanguages, onDismiss: openDownloadsIfNeeded) {
-            DevotionLanguageSheet(
-                kind: .stations,
-                languages: packs.languages(for: .stations),
+            LanguageSheet(
+                title: DevotionKind.stations.languageTitle,
+                languages: choice.languages,
                 selected: choice.active,
-                onSelect: { session.select($0, for: .stations) },
+                onSelect: { selection.select($0, for: .stations) },
                 onDownload: { openDownloads = true }
             )
         }
@@ -195,7 +197,7 @@ struct StationView: View {
     }
 
     private var languageButton: some View {
-        DevotionLanguageButton(title: choice.buttonTitle, accessibilityLabel: "Stations language") {
+        LanguageButton(title: choice.buttonTitle, accessibilityLabel: "Stations language") {
             showsLanguages = true
         }
     }

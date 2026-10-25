@@ -236,53 +236,15 @@ nonisolated enum HymnSearch {
     }
 }
 
+/// Names a hymn language from the pack list. The packs that ship with the app stand in
+/// when a caller has no list. A language no list names shows as its code.
 nonisolated enum HymnLanguage {
-    static func ordered(_ codes: [String]) -> [String] {
-        let preferred = ["en", "la"]
-        return Array(Set(codes)).sorted { lhs, rhs in
-            let left = preferred.firstIndex(of: lhs) ?? preferred.count
-            let right = preferred.firstIndex(of: rhs) ?? preferred.count
-            if left != right { return left < right }
-            return name(for: lhs) < name(for: rhs)
-        }
+    static func name(for code: String, in packs: [PackRecord] = PackSeed.rows) -> String {
+        PackLanguages.language(code: code, type: PackLanguages.hymnsType, in: packs).name
     }
 
-    static func name(for code: String, in packs: [PackRecord] = []) -> String {
-        if let pack = hymnPack(code, in: packs) {
-            if let languageName = trimmed(pack.languageName) { return languageName }
-            if let fromTitle = language(inCatalogue: pack.displayName) { return fromTitle }
-        }
-        switch code {
-        case "en": return "English"
-        case "la": return "Latin"
-        default: return code
-        }
-    }
-
-    static func catalogueName(for code: String, in packs: [PackRecord] = []) -> String {
-        if let pack = hymnPack(code, in: packs) {
-            let title = pack.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !title.isEmpty { return title }
-        }
-        return "\(name(for: code, in: packs)) Hymns"
-    }
-
-    private static func hymnPack(_ code: String, in packs: [PackRecord]) -> PackRecord? {
-        packs.first { $0.type == "hymns" && $0.language == code }
-    }
-
-    /// `Efik Hymns` yields `Efik` when the catalog has no separate language name.
-    private static func language(inCatalogue title: String) -> String? {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedTitle.hasSuffix(" Hymns") else { return nil }
-        let name = String(trimmedTitle.dropLast(" Hymns".count)).trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? nil : name
-    }
-
-    private static func trimmed(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+    static func catalogueName(for code: String, in packs: [PackRecord] = PackSeed.rows) -> String {
+        PackLanguages.language(code: code, type: PackLanguages.hymnsType, in: packs).packName
     }
 }
 
@@ -309,7 +271,7 @@ nonisolated enum HymnLabels {
         }
     }
 
-    static func catalogueLine(language: String, seasons: [String], massParts: [String], topics: [String], catalogues: [PackRecord] = []) -> String {
+    static func catalogueLine(language: String, seasons: [String], massParts: [String], topics: [String], catalogues: [PackRecord] = PackSeed.rows) -> String {
         var parts = [HymnLanguage.catalogueName(for: language, in: catalogues)]
         parts.append(contentsOf: seasons.map(token))
         parts.append(contentsOf: massParts.map(token))
@@ -318,7 +280,7 @@ nonisolated enum HymnLabels {
     }
 
     /// List subtitle: the catalogue name, then the Mass parts. Seasons stand in when a hymn has no part.
-    static func rowLine(language: String, seasons: [String], massParts: [String], catalogues: [PackRecord] = []) -> String {
+    static func rowLine(language: String, seasons: [String], massParts: [String], catalogues: [PackRecord] = PackSeed.rows) -> String {
         var parts = [HymnLanguage.catalogueName(for: language, in: catalogues)]
         let detail = massParts.isEmpty ? seasons : massParts
         parts.append(contentsOf: detail.map(token))

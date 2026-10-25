@@ -2,7 +2,8 @@ import SwiftUI
 
 struct PrayersView: View {
     @Environment(InstalledPacks.self) private var packs
-    @Environment(DevotionSession.self) private var session
+    @Environment(LanguageSelection.self) private var selection
+    private let catalog = PackCatalogStore.shared
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.palette) private var palette
     @Environment(\.splitsColumns) private var splitsColumns
@@ -13,7 +14,7 @@ struct PrayersView: View {
     @State private var selectedID: String?
 
     private var choice: DevotionLanguageChoice {
-        DevotionLanguageChoice(requested: session.code(for: .prayers), installed: packs.languages(for: .prayers))
+        DevotionLanguageChoice(.prayers, requested: selection.code(for: .prayers), installed: packs.languages(for: .prayers), catalog: catalog.packs)
     }
 
     private var prayers: [SpecialPrayer]? {
@@ -54,11 +55,11 @@ struct PrayersView: View {
             }
         }
         .sheet(isPresented: $showsLanguages, onDismiss: openDownloadsIfNeeded) {
-            DevotionLanguageSheet(
-                kind: .prayers,
-                languages: packs.languages(for: .prayers),
+            LanguageSheet(
+                title: DevotionKind.prayers.languageTitle,
+                languages: choice.languages,
                 selected: choice.active,
-                onSelect: { session.select($0, for: .prayers) },
+                onSelect: { selection.select($0, for: .prayers) },
                 onDownload: { openDownloads = true }
             )
         }
@@ -126,7 +127,7 @@ struct PrayersView: View {
     }
 
     private var languageButton: some View {
-        DevotionLanguageButton(title: choice.buttonTitle, accessibilityLabel: "Prayers language") {
+        LanguageButton(title: choice.buttonTitle, accessibilityLabel: "Prayers language") {
             showsLanguages = true
         }
     }
@@ -151,16 +152,14 @@ struct PrayerView: View {
     var showsChrome: Bool = true
 
     @Environment(InstalledPacks.self) private var packs
-    @Environment(DevotionSession.self) private var session
+    @Environment(LanguageSelection.self) private var selection
+    private let catalog = PackCatalogStore.shared
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
 
-    @State private var showsLanguages = false
-    @State private var openDownloads = false
-
     private var choice: DevotionLanguageChoice {
-        DevotionLanguageChoice(requested: session.code(for: .prayers), installed: packs.languages(for: .prayers))
+        DevotionLanguageChoice(.prayers, requested: selection.code(for: .prayers), installed: packs.languages(for: .prayers), catalog: catalog.packs)
     }
 
     private var prayer: SpecialPrayer? {
@@ -178,21 +177,11 @@ struct PrayerView: View {
             }
         }
         .accessibilityIdentifier("prayer.\(id)")
-        .sheet(isPresented: $showsLanguages, onDismiss: openDownloadsIfNeeded) {
-            DevotionLanguageSheet(
-                kind: .prayers,
-                languages: packs.languages(for: .prayers),
-                selected: choice.active,
-                onSelect: { session.select($0, for: .prayers) },
-                onDownload: { openDownloads = true }
-            )
-        }
     }
 
     private var bodyContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                languageButton
                 if let prayer {
                     prayerBody(prayer)
                 } else {
@@ -207,12 +196,6 @@ struct PrayerView: View {
         .background(palette.background.color)
     }
 
-    private var languageButton: some View {
-        DevotionLanguageButton(title: choice.buttonTitle, accessibilityLabel: "Prayers language") {
-            showsLanguages = true
-        }
-    }
-
     private func prayerBody(_ prayer: SpecialPrayer) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             ReadingText(text: prayer.title, role: DevotionText.part)
@@ -224,11 +207,5 @@ struct PrayerView: View {
             }
             ReadingText(text: prayer.text, role: DevotionText.prayer)
         }
-    }
-
-    private func openDownloadsIfNeeded() {
-        guard openDownloads else { return }
-        openDownloads = false
-        navigation.path.append(AppRoute.downloads)
     }
 }

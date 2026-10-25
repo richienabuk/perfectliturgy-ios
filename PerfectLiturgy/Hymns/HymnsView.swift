@@ -11,16 +11,16 @@ struct HymnsView: View {
     @Environment(\.splitsColumns) private var splitsColumns
     @Environment(AppNavigation.self) private var navigation
     @Environment(InstalledPacks.self) private var packs
+    @Environment(LanguageSelection.self) private var selection
     @Environment(\.modelContext) private var modelContext
 
     @State private var model = HymnListModel()
     /// Read once, off the main thread. A pushed screen and a tab change do not read the file again.
-    private let packStore = HymnPackStore.shared
+    private let catalog = PackCatalogStore.shared
     @Query private var bookmarks: [HymnBookmark]
 
     @State private var query = ""
     @State private var debouncedQuery = ""
-    @State private var language: String?
     @State private var season: String?
     @State private var massPart: String?
     @State private var showsFilters = false
@@ -56,16 +56,17 @@ struct HymnsView: View {
             )
         }
         .sheet(isPresented: $showsLanguages, onDismiss: openDownloadsIfNeeded) {
-            HymnLanguageSheet(
+            LanguageSheet(
+                title: "Hymn language",
                 languages: model.languages,
-                catalogues: packStore.packs,
                 selected: activeLanguage,
+                offersAll: true,
                 onSelect: { code in
                     // The list refilters in a moment now, so there is nothing to wait for.
                     var transaction = Transaction()
                     transaction.disablesAnimations = true
                     withTransaction(transaction) {
-                        language = code
+                        selection.select(code, for: PackLanguages.hymnsType)
                     }
                 },
                 onDownload: { openDownloadsAfterLanguage = true }
@@ -75,7 +76,7 @@ struct HymnsView: View {
         .onChange(of: season) { _, _ in applyFilters() }
         .onChange(of: massPart) { _, _ in applyFilters() }
         .onChange(of: packs.ids) { _, _ in applyFilters() }
-        .onChange(of: packStore.packs) { _, _ in model.refilter(filterInputs) }
+        .onChange(of: catalog.packs) { _, _ in model.refilter(filterInputs) }
         .task {
             // The task restarts each time the tab appears. The list loads once.
             guard !model.isLoaded else { return }
@@ -92,7 +93,6 @@ struct HymnsView: View {
         let selectedRow = splitsColumns ? activeID : nil
         return VStack(alignment: .leading, spacing: splitsColumns ? 14 : 12) {
             listHeader
-            languageButton
             searchField
             if splitsColumns {
                 wideCountRow
@@ -183,35 +183,9 @@ struct HymnsView: View {
     }
 
     private var languageButton: some View {
-        Button {
+        LanguageButton(title: languageButtonTitle, accessibilityLabel: "Hymn language", fillsWidth: false) {
             showsLanguages = true
-        } label: {
-            HStack(alignment: .center, spacing: 12) {
-                Image(systemName: "character.book.closed")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(palette.emphasis.color)
-                    .frame(width: 24, height: 24)
-                Text(languageButtonTitle)
-                    .font(AppFont.interface(size: 15, weight: .semibold))
-                    .foregroundStyle(palette.foreground.color)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(palette.emphasis.color)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, minHeight: ControlMetrics.minimumHeight, alignment: .leading)
-            .background(palette.card.color, in: RoundedRectangle(cornerRadius: Radius.lg))
-            .overlay {
-                RoundedRectangle(cornerRadius: Radius.lg)
-                    .strokeBorder(palette.border.color, lineWidth: 1)
-            }
         }
-        .buttonStyle(PressScaleButtonStyle())
-        .accessibilityLabel("Hymn language")
-        .accessibilityValue(languageButtonTitle)
     }
 
     private var phoneCountRow: some View {
@@ -295,7 +269,10 @@ struct HymnsView: View {
             filterBarRow
                 .fixedSize(horizontal: true, vertical: false)
             VStack(alignment: .leading, spacing: 8) {
-                filterButton
+                HStack(spacing: 8) {
+                    languageButton
+                    filterButton
+                }
                 if filtersActive {
                     chipRow
                 }
@@ -305,6 +282,7 @@ struct HymnsView: View {
 
     private var filterBarRow: some View {
         HStack(spacing: 8) {
+            languageButton
             filterButton
             if filtersActive {
                 chipRow
@@ -371,7 +349,7 @@ struct HymnsView: View {
             season: season,
             massPart: massPart,
             query: debouncedQuery,
-            catalogues: packStore.packs
+            catalogues: catalog.packs(ofType: PackLanguages.hymnsType)
         )
     }
 
@@ -381,12 +359,16 @@ struct HymnsView: View {
         scrollResetToken &+= 1
     }
 
+    /// The saved choice for Hymns. It stays across screens and launches. Nil means all languages.
+    private var language: String? { selection.code(for: PackLanguages.hymnsType) }
+
     /// Nil shows every catalogue. A stored choice is kept only while that language is on the device.
     private var activeLanguage: String? { model.activeLanguage }
 
     private var languageButtonTitle: String {
         guard let activeLanguage else { return "All languages" }
-        return HymnLanguage.name(for: activeLanguage, in: packStore.packs)
+        return model.languages.first { $0.code == activeLanguage }?.name
+            ?? HymnLanguage.name(for: activeLanguage, in: catalog.packs)
     }
 
     /// Stored by the model. Reading it does not filter the catalogue.

@@ -80,23 +80,83 @@ private let joyful = RosaryMysterySet(
 }
 
 @Test func `a language that is not installed offers downloads`() {
-    let missing = DevotionLanguageChoice(requested: "la", installed: ["en"])
+    let catalog = PackSeed.rows
+    let missing = DevotionLanguageChoice(.rosary, requested: "la", installed: ["en"], catalog: catalog)
     #expect(missing.offersDownloads)
     #expect(missing.message == "Latin is not on this device.")
     #expect(missing.active == "en")
 
-    let unknown = DevotionLanguageChoice(requested: "efi", installed: ["en", "la"])
+    let unknown = DevotionLanguageChoice(.rosary, requested: "efi", installed: ["en", "la"], catalog: catalog)
     #expect(unknown.offersDownloads)
     #expect(unknown.message == "This language is not on this device.")
 
-    let ready = DevotionLanguageChoice(requested: nil, installed: ["la", "en"])
+    let ready = DevotionLanguageChoice(.rosary, requested: nil, installed: ["la", "en"], catalog: catalog)
     #expect(!ready.offersDownloads)
     #expect(ready.active == "en")
     #expect(ready.buttonTitle == "English")
+    #expect(ready.languages.map(\.name) == ["English", "Latin"])
 
-    let none = DevotionLanguageChoice(requested: nil, installed: [])
+    let none = DevotionLanguageChoice(.rosary, requested: nil, installed: [], catalog: catalog)
     #expect(none.offersDownloads)
     #expect(none.buttonTitle == "Language")
+}
+
+private func catalogRow(_ id: String, type: String, language: String, name: String, languageName: String? = nil) -> PackRecord {
+    PackRecord(packId: id, type: type, language: language, languageName: languageName, displayName: name, mode: "download")
+}
+
+@Test func `a pack type lists only the languages its packs have, named by the pack list`() {
+    let catalog = [
+        catalogRow("hymns-en", type: "hymns", language: "en", name: "English Hymns", languageName: "English"),
+        catalogRow("hymns-efik", type: "hymns", language: "efik", name: "Efik Hymns", languageName: "Efik"),
+        catalogRow("hymns-ha", type: "hymns", language: "ha", name: "Hausa Hymns", languageName: "Hausa"),
+        catalogRow("stations-efik", type: "stations", language: "efik", name: "Stations of the Cross", languageName: "Efik"),
+        catalogRow("litanies-pt", type: "litanies", language: "pt", name: "Litanies · Portuguese", languageName: "Portuguese"),
+    ]
+    let hymns = PackLanguages.list(codes: ["ha", "efik", "en"], type: "hymns", in: catalog)
+    #expect(hymns.map(\.name) == ["English", "Efik", "Hausa"])
+
+    // Stations has Efik only, so that is the whole list and the one in use.
+    let stations = DevotionLanguageChoice(.stations, requested: nil, installed: ["efik"], catalog: catalog)
+    #expect(stations.languages.map(\.name) == ["Efik"])
+    #expect(stations.active == "efik")
+    #expect(stations.buttonTitle == "Efik")
+    #expect(!stations.offersDownloads)
+
+    // A language the app has never heard of shows with no new release.
+    let litanies = DevotionLanguageChoice(.litanies, requested: "pt", installed: ["pt"], catalog: catalog)
+    #expect(litanies.buttonTitle == "Portuguese")
+    #expect(litanies.active == "pt")
+}
+
+@Test func `a language name is the catalog name, then the display name, then the code`() {
+    let named = catalogRow("rosary-pt", type: "rosary", language: "pt", name: "Rosary · Portuguese", languageName: "Portuguese")
+    let unnamed = catalogRow("rosary-sw", type: "rosary", language: "sw", name: "Rosary · Swahili")
+    #expect(PackLanguages.language(code: "pt", type: "rosary", in: [named]).name == "Portuguese")
+    #expect(PackLanguages.language(code: "sw", type: "rosary", in: [unnamed]).name == "Rosary · Swahili")
+    #expect(PackLanguages.language(code: "xx", type: "rosary", in: [named, unnamed]).name == "xx")
+}
+
+@Test func `the language chosen for a pack type is kept, and one type never moves another`() throws {
+    let suite = "language-selection-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let selection = LanguageSelection(defaults: defaults)
+    #expect(selection.code(for: .litanies) == nil)
+    selection.select("la", for: PackLanguages.hymnsType)
+    selection.select("pt", for: .litanies)
+    #expect(selection.code(for: .prayers) == nil)
+
+    // A new instance stands in for a relaunch.
+    let again = LanguageSelection(defaults: defaults)
+    #expect(again.code(for: PackLanguages.hymnsType) == "la")
+    #expect(again.code(for: .litanies) == "pt")
+    #expect(again.code(for: .prayers) == nil)
+
+    again.select(nil, for: PackLanguages.hymnsType)
+    #expect(LanguageSelection(defaults: defaults).code(for: PackLanguages.hymnsType) == nil)
+    #expect(LanguageSelection(defaults: defaults).code(for: .litanies) == "pt")
 }
 
 @Test func `english and latin devotion packs open offline`() throws {
@@ -164,7 +224,7 @@ private let joyful = RosaryMysterySet(
     #expect(packs.languages(for: .stations) == ["en", "la"])
     packs.remove("rosary-la")
     #expect(packs.languages(for: .rosary) == ["en"])
-    let choice = DevotionLanguageChoice(requested: "la", installed: packs.languages(for: .rosary))
+    let choice = DevotionLanguageChoice(.rosary, requested: "la", installed: packs.languages(for: .rosary), catalog: PackSeed.rows)
     #expect(choice.offersDownloads)
 }
 

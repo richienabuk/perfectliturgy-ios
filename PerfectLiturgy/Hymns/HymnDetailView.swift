@@ -19,7 +19,7 @@ struct HymnDetailView: View {
     @Environment(\.isWideLayout) private var isWide
     @Environment(\.modelContext) private var modelContext
     @State private var page: HymnPage?
-    private let packStore = HymnPackStore.shared
+    private let packStore = PackCatalogStore.shared
     @Query private var bookmarks: [HymnBookmark]
 
     var body: some View {

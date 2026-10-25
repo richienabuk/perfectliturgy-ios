@@ -14,7 +14,7 @@ final class HymnListModel {
         var season: String?
         var massPart: String?
         var query: String = ""
-        /// Hymn catalogues from the pack list. They name the language on each row.
+        /// Hymn catalogues from the pack list. They name each language on screen.
         var catalogues: [PackRecord] = []
     }
 
@@ -27,8 +27,8 @@ final class HymnListModel {
     }
 
     private(set) var catalogue: [HymnSummary] = []
-    /// Installed languages that have at least one hymn, English and Latin first.
-    private(set) var languages: [String] = []
+    /// Installed languages that have at least one hymn, named by the pack list.
+    private(set) var languages: [PackLanguage] = []
     /// The chosen language while it is still on the device. Nil shows every catalogue.
     private(set) var activeLanguage: String?
     private(set) var filtered: [HymnSummary] = []
@@ -39,6 +39,8 @@ final class HymnListModel {
 
     private var inputs = Inputs()
     private var loadGeneration = 0
+    /// The language codes in the catalogue, found once per load.
+    private var catalogueLanguages: Set<String> = []
 
     /// Reads the catalogue off the main thread. A later load wins over an earlier one that finishes after it.
     func load(from container: ModelContainer, inputs: @MainActor () -> Inputs) async {
@@ -51,6 +53,7 @@ final class HymnListModel {
 
     func setCatalogue(_ catalogue: [HymnSummary], inputs: Inputs) {
         self.catalogue = catalogue
+        catalogueLanguages = Set(catalogue.map(\.language))
         isLoaded = true
         refilter(inputs, force: true)
     }
@@ -63,8 +66,12 @@ final class HymnListModel {
         self.inputs = inputs
 
         let installed = inputs.installed
-        let languages = HymnLanguage.ordered(catalogue.map(\.language).filter { installed.contains($0) })
-        let active = inputs.language.flatMap { languages.contains($0) ? $0 : nil }
+        let languages = PackLanguages.list(
+            codes: catalogueLanguages.filter { installed.contains($0) },
+            type: PackLanguages.hymnsType,
+            in: inputs.catalogues
+        )
+        let active = inputs.language.flatMap { code in languages.contains { $0.code == code } ? code : nil }
         let filter = HymnFilter(
             text: inputs.query,
             language: active,

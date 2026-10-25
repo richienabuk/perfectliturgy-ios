@@ -2,7 +2,8 @@ import SwiftUI
 
 struct LitaniesView: View {
     @Environment(InstalledPacks.self) private var packs
-    @Environment(DevotionSession.self) private var session
+    @Environment(LanguageSelection.self) private var selection
+    private let catalog = PackCatalogStore.shared
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.palette) private var palette
     @Environment(\.splitsColumns) private var splitsColumns
@@ -13,7 +14,7 @@ struct LitaniesView: View {
     @State private var selectedID: String?
 
     private var choice: DevotionLanguageChoice {
-        DevotionLanguageChoice(requested: session.code(for: .litanies), installed: packs.languages(for: .litanies))
+        DevotionLanguageChoice(.litanies, requested: selection.code(for: .litanies), installed: packs.languages(for: .litanies), catalog: catalog.packs)
     }
 
     private var litanies: [Litany]? {
@@ -47,11 +48,11 @@ struct LitaniesView: View {
             }
         }
         .sheet(isPresented: $showsLanguages, onDismiss: openDownloadsIfNeeded) {
-            DevotionLanguageSheet(
-                kind: .litanies,
-                languages: packs.languages(for: .litanies),
+            LanguageSheet(
+                title: DevotionKind.litanies.languageTitle,
+                languages: choice.languages,
                 selected: choice.active,
-                onSelect: { session.select($0, for: .litanies) },
+                onSelect: { selection.select($0, for: .litanies) },
                 onDownload: { openDownloads = true }
             )
         }
@@ -123,7 +124,7 @@ struct LitaniesView: View {
     }
 
     private var languageButton: some View {
-        DevotionLanguageButton(title: choice.buttonTitle, accessibilityLabel: "Litanies language") {
+        LanguageButton(title: choice.buttonTitle, accessibilityLabel: "Litanies language") {
             showsLanguages = true
         }
     }
@@ -148,16 +149,14 @@ struct LitanyView: View {
     var showsChrome: Bool = true
 
     @Environment(InstalledPacks.self) private var packs
-    @Environment(DevotionSession.self) private var session
+    @Environment(LanguageSelection.self) private var selection
+    private let catalog = PackCatalogStore.shared
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
 
-    @State private var showsLanguages = false
-    @State private var openDownloads = false
-
     private var choice: DevotionLanguageChoice {
-        DevotionLanguageChoice(requested: session.code(for: .litanies), installed: packs.languages(for: .litanies))
+        DevotionLanguageChoice(.litanies, requested: selection.code(for: .litanies), installed: packs.languages(for: .litanies), catalog: catalog.packs)
     }
 
     private var litany: Litany? {
@@ -175,21 +174,11 @@ struct LitanyView: View {
             }
         }
         .accessibilityIdentifier("litany.\(id)")
-        .sheet(isPresented: $showsLanguages, onDismiss: openDownloadsIfNeeded) {
-            DevotionLanguageSheet(
-                kind: .litanies,
-                languages: packs.languages(for: .litanies),
-                selected: choice.active,
-                onSelect: { session.select($0, for: .litanies) },
-                onDownload: { openDownloads = true }
-            )
-        }
     }
 
     private var bodyContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                languageButton
                 if let litany {
                     litanyBody(litany)
                 } else {
@@ -202,12 +191,6 @@ struct LitanyView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(palette.background.color)
-    }
-
-    private var languageButton: some View {
-        DevotionLanguageButton(title: choice.buttonTitle, accessibilityLabel: "Litanies language") {
-            showsLanguages = true
-        }
     }
 
     private func litanyBody(_ litany: Litany) -> some View {
@@ -252,11 +235,5 @@ struct LitanyView: View {
                 .fill(palette.border.color)
                 .frame(height: 1)
         }
-    }
-
-    private func openDownloadsIfNeeded() {
-        guard openDownloads else { return }
-        openDownloads = false
-        navigation.path.append(AppRoute.downloads)
     }
 }

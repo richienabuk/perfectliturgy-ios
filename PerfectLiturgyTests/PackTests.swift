@@ -29,7 +29,9 @@ import Testing
         displayName: "Hausa Hymns",
         mode: "live"
     )
-    #expect(HymnLanguage.name(for: "ha", in: [hausa]) == "Hausa")
+    // No `language_name`: the pack's display name is the label. The app never parses it.
+    #expect(HymnLanguage.name(for: "ha", in: [hausa]) == "Hausa Hymns")
+    // A language the pack list does not name shows its code. The app holds no language table.
     #expect(HymnLanguage.name(for: "yo") == "yo")
 }
 

@@ -9,7 +9,7 @@ struct PerfectLiturgyApp: App {
     @State private var navigation = AppNavigation()
     @State private var readings = ReadingsPreferences()
     @State private var packs: InstalledPacks
-    @State private var devotions = DevotionSession()
+    @State private var languages = LanguageSelection()
     @State private var session: AppSession
 
     init() {
@@ -32,7 +32,7 @@ struct PerfectLiturgyApp: App {
                 .environment(navigation)
                 .environment(readings)
                 .environment(packs)
-                .environment(devotions)
+                .environment(languages)
                 .environment(session)
                 .environment(\.readingScale, design.readingScale)
                 .resolvePalette()

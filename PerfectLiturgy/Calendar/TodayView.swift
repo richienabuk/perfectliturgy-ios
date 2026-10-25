@@ -165,7 +165,7 @@ struct TodayView: View {
             savedCatalogue = nil
             return
         }
-        savedCatalogue = HymnLanguage.catalogueName(for: hymn.language)
+        savedCatalogue = HymnLanguage.catalogueName(for: hymn.language, in: PackCatalogStore.shared.packs)
     }
 
     private var emptySavedCard: some View {

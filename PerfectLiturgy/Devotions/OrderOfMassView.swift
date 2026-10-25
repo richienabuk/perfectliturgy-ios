@@ -2,7 +2,8 @@ import SwiftUI
 
 struct OrderOfMassView: View {
     @Environment(InstalledPacks.self) private var packs
-    @Environment(DevotionSession.self) private var session
+    @Environment(LanguageSelection.self) private var selection
+    private let catalog = PackCatalogStore.shared
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
@@ -11,7 +12,7 @@ struct OrderOfMassView: View {
     @State private var openDownloads = false
 
     private var choice: DevotionLanguageChoice {
-        DevotionLanguageChoice(requested: session.code(for: .order), installed: packs.languages(for: .order))
+        DevotionLanguageChoice(.order, requested: selection.code(for: .order), installed: packs.languages(for: .order), catalog: catalog.packs)
     }
 
     private var parts: [MassPart]? {
@@ -40,18 +41,18 @@ struct OrderOfMassView: View {
             }
         }
         .sheet(isPresented: $showsLanguages, onDismiss: openDownloadsIfNeeded) {
-            DevotionLanguageSheet(
-                kind: .order,
-                languages: packs.languages(for: .order),
+            LanguageSheet(
+                title: DevotionKind.order.languageTitle,
+                languages: choice.languages,
                 selected: choice.active,
-                onSelect: { session.select($0, for: .order) },
+                onSelect: { selection.select($0, for: .order) },
                 onDownload: { openDownloads = true }
             )
         }
     }
 
     private var languageButton: some View {
-        DevotionLanguageButton(title: choice.buttonTitle, accessibilityLabel: "Order of Mass language") {
+        LanguageButton(title: choice.buttonTitle, accessibilityLabel: "Order of Mass language") {
             showsLanguages = true
         }
     }

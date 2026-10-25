@@ -39,54 +39,62 @@ nonisolated enum DevotionKind: String, CaseIterable, Sendable {
 }
 
 /// The language the reader is using, and whether Downloads is the way forward.
+/// `languages` are the installed ones for this pack type, named by the pack list.
 nonisolated struct DevotionLanguageChoice: Equatable, Sendable {
     var requested: String?
-    var installed: [String]
+    /// The name the pack list gives the requested language, when it lists one.
+    var requestedName: String?
+    var languages: [PackLanguage]
 
-    var active: String? {
-        if let requested, installed.contains(requested) {
-            return requested
-        }
-        if installed.contains("en") {
-            return "en"
-        }
-        return HymnLanguage.ordered(installed).first
+    init(requested: String?, requestedName: String? = nil, languages: [PackLanguage]) {
+        self.requested = requested
+        self.requestedName = requestedName
+        self.languages = languages
     }
+
+    /// Build the choice for one devotion from the saved pack list.
+    init(_ kind: DevotionKind, requested: String?, installed: [String], catalog: [PackRecord]) {
+        let type = kind.rawValue
+        self.init(
+            requested: requested,
+            requestedName: requested.flatMap { code in
+                PackLanguages.record(code: code, type: type, in: catalog) == nil
+                    ? nil
+                    : PackLanguages.language(code: code, type: type, in: catalog).name
+            },
+            languages: PackLanguages.list(codes: installed, type: type, in: catalog)
+        )
+    }
+
+    private var activeLanguage: PackLanguage? {
+        PackLanguages.active(requested: requested, in: languages)
+    }
+
+    var active: String? { activeLanguage?.code }
 
     /// A chosen language is not on the device, or nothing is installed.
     var offersDownloads: Bool {
-        if let requested, !installed.contains(requested) {
+        if let requested, !languages.contains(where: { $0.code == requested }) {
             return true
         }
-        return installed.isEmpty
+        return languages.isEmpty
     }
 
     var message: String {
-        guard let requested else {
+        guard let requestedName else {
             return "This language is not on this device."
         }
-        let name = HymnLanguage.name(for: requested)
-        if name == requested {
-            return "This language is not on this device."
-        }
-        return "\(name) is not on this device."
+        return "\(requestedName) is not on this device."
     }
 
     var buttonTitle: String {
-        if let active {
-            return HymnLanguage.name(for: active)
-        }
-        if let requested {
-            let name = HymnLanguage.name(for: requested)
-            if name != requested { return name }
-        }
-        return "Language"
+        activeLanguage?.name ?? requestedName ?? "Language"
     }
 
     /// What to say when the reader cannot show this language.
     var unavailableMessage: String {
-        if let active, installed.contains(active), requested == nil || installed.contains(requested ?? "") {
-            return "\(HymnLanguage.name(for: active)) is not on this device."
+        if let activeLanguage, !offersDownloads {
+            return "\(activeLanguage.name) is not on this device."
         }
         return message
     }

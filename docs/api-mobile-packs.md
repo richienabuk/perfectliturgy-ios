@@ -115,7 +115,8 @@ Lists every pack available for download or sync. The app merges this with local 
 | `pack_id` | yes | Path id for download/sync |
 | `type` | yes | One of the fixed category types above |
 | `language` | usually | ISO-ish code; calendars may omit and use country in `pack_id` |
-| `display_name` | yes | Shown in Downloads (full row title) |
+| `display_name` | yes | Shown in Downloads (full row title). The language control shows it when `language_name` is absent |
+| `language_name` | no | The language's own name, such as `Efik`. The language control and the language sheet show it. The app has no language table, so a new language needs no app release |
 | `revision` | yes | Empty on first pack create; UTC ISO-8601 after the first revise. Client stores it; send as `since` on sync when non-empty |
 | `size` | no | Bytes; client shows e.g. `4.2 MB` |
 | `requires_sign_in` | no | Real gate for download/sync. Default client assumption if omitted: `true`. Seeded EN/LA start installed without a network call |
@@ -216,7 +217,7 @@ Do not include admin-only fields (`import_source`, rights follow-up columns).
 
 `GET /v1/packs/order-{lang}/download`
 
-Language belongs on the **envelope** only (`language: "es"`). Do not send a nested display name or `language_name`. The client derives the UI label from that code (`es` → Spanish).
+Language belongs on the **envelope** only (`language: "es"`). Do not nest a language name in `data`. The catalog row carries the label (`language_name`, else `display_name`).
 
 `data` is the list of major Mass parts (Introductory Rites, Liturgy of the Word, …). Each part has its own `items`. Sort by `order` ascending (do not rely on array position alone).
 
@@ -302,7 +303,7 @@ Rules for editors / the API:
 
 `GET /v1/packs/rosary-{lang}/download`
 
-Language belongs on the **envelope** only (`language: "es"`). The client derives the UI label from that code.
+Language belongs on the **envelope** only (`language: "es"`). The catalog row carries the label.
 
 `data` is an object with `prayers` (fixed keys) and `mysteries` (the four sets). Sort mystery sets and titles by `order` ascending. The guided UI builds the traditional 81-step sequence from this pack (opening, five decades, closing).
 
@@ -380,7 +381,7 @@ Rosary packs use `mode: "download"` only — never the Sync route.
 
 `GET /v1/packs/litanies-{lang}/download`
 
-Language belongs on the **envelope** only (`language: "es"`). The client derives the UI label from that code.
+Language belongs on the **envelope** only (`language: "es"`). The catalog row carries the label.
 
 `data` is the list of litanies. Sort by `order` ascending. Each litany has `lines` (call-and-response). A line may omit `response` for a full-width call-only row.
 
@@ -472,7 +473,7 @@ Language belongs on the **envelope** only. `data` is the list of prayers. Sort b
 
 `GET /v1/packs/stations-{lang}/download`
 
-Language belongs on the **envelope** only (`language: "es"`). The client derives the UI label from that code.
+Language belongs on the **envelope** only (`language: "es"`). The catalog row carries the label.
 
 `data` is the list of stations, traditionally fourteen. Sort by `order` ascending. The client shows a bundled illustration for orders 1–14; do not send image URLs.
 

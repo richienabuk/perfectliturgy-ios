@@ -21,14 +21,14 @@ enum SavedRows {
     }
 
     /// An installed hymn opens. A missing hymn keeps the stored title and stays closed.
-    static func row(bookmark: HymnBookmark, hymn: HymnRecord?, installed: Set<String>) -> SavedRow {
+    static func row(bookmark: HymnBookmark, hymn: HymnRecord?, installed: Set<String>, catalogues: [PackRecord] = PackSeed.rows) -> SavedRow {
         let language = hymn?.language ?? bookmark.language
         let packInstalled = !language.isEmpty && installed.contains(ContentPack.hymnID(for: language))
         if let hymn, packInstalled {
             return SavedRow(
                 id: bookmark.hymnId,
                 title: hymn.title,
-                detail: detail(language: hymn.language, massParts: hymn.massParts),
+                detail: detail(language: hymn.language, massParts: hymn.massParts, catalogues: catalogues),
                 opens: true
             )
         }
@@ -40,8 +40,8 @@ enum SavedRows {
         return SavedRow(id: bookmark.hymnId, title: bookmark.titleSnapshot, detail: message, opens: false)
     }
 
-    static func detail(language: String, massParts: [String]) -> String {
-        var parts = [HymnLanguage.catalogueName(for: language)]
+    static func detail(language: String, massParts: [String], catalogues: [PackRecord] = PackSeed.rows) -> String {
+        var parts = [HymnLanguage.catalogueName(for: language, in: catalogues)]
         if let first = massParts.first, !first.isEmpty {
             parts.append(HymnLabels.token(first))
         }
@@ -117,7 +117,8 @@ struct SavedView: View {
             SavedRows.row(
                 bookmark: bookmark,
                 hymn: HymnImporter.record(id: bookmark.hymnId, in: modelContext),
-                installed: packs.ids
+                installed: packs.ids,
+                catalogues: PackCatalogStore.shared.packs
             )
         }
     }

@@ -176,13 +176,13 @@ private let stanzaHymn = Data("""
     #expect(model.rows.map(\.id) == ["test-en-stanza"])
 }
 
-@Test @MainActor func `the hymn pack store reads the saved list once and again after it is saved`() async throws {
+@Test @MainActor func `the pack catalog store reads the saved list once and again after it is saved`() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("hymn-packs-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
-    let store = HymnPackStore(root: root)
+    let store = PackCatalogStore(root: root)
     await store.reload()
-    // No saved list yet: the seeded English and Latin rows stay.
-    #expect(store.packs.map(\.packId) == ["hymns-en", "hymns-la"])
+    // No saved list yet: the seeded rows stay.
+    #expect(store.packs.map(\.packId) == PackSeed.rows.map(\.packId))
 
     try PackFiles.saveCatalog(
         [
@@ -192,8 +192,11 @@ private let stanzaHymn = Data("""
         root: root
     )
     await store.reload()
-    #expect(store.packs.map(\.packId) == ["hymns-efi"])
+    // The saved rows lead. A seeded row the server leaves out stays, so its language keeps its name.
+    #expect(store.packs(ofType: "hymns").map(\.packId) == ["hymns-efi", "hymns-en", "hymns-la"])
+    #expect(store.packs(ofType: "prayers").map(\.packId) == ["prayers-en", "prayers-la"])
     #expect(HymnLanguage.name(for: "efi", in: store.packs) == "Efik")
+    #expect(HymnLanguage.name(for: "la", in: store.packs) == "Latin")
 }
 
 @Test func `a season and a mass part together return only hymns with both`() throws {
@@ -289,6 +292,7 @@ private let stanzaHymn = Data("""
         .environment(navigation)
         .environment(design)
         .environment(packs)
+        .environment(LanguageSelection(defaults: UserDefaults(suiteName: "render-language-\(UUID().uuidString)")!))
         .environment(\.readingScale, design.readingScale)
         .resolvePalette()
         .frame(width: 390, height: 844)
@@ -313,6 +317,7 @@ private let stanzaHymn = Data("""
         .environment(navigation)
         .environment(design)
         .environment(packs)
+        .environment(LanguageSelection(defaults: UserDefaults(suiteName: "render-language-\(UUID().uuidString)")!))
         .environment(\.readingScale, design.readingScale)
         .environment(\.isWideLayout, true)
         .resolvePalette()
@@ -345,6 +350,7 @@ private let stanzaHymn = Data("""
         .environment(navigation)
         .environment(design)
         .environment(packs)
+        .environment(LanguageSelection(defaults: UserDefaults(suiteName: "render-language-\(UUID().uuidString)")!))
         .environment(\.readingScale, design.readingScale)
         .resolvePalette()
         .frame(width: 390, height: 844)

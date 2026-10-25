@@ -2,7 +2,8 @@ import SwiftUI
 
 struct RosaryView: View {
     @Environment(InstalledPacks.self) private var packs
-    @Environment(DevotionSession.self) private var session
+    @Environment(LanguageSelection.self) private var selection
+    private let catalog = PackCatalogStore.shared
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
@@ -13,7 +14,7 @@ struct RosaryView: View {
     @State private var stepIndex = 0
 
     private var choice: DevotionLanguageChoice {
-        DevotionLanguageChoice(requested: session.code(for: .rosary), installed: packs.languages(for: .rosary))
+        DevotionLanguageChoice(.rosary, requested: selection.code(for: .rosary), installed: packs.languages(for: .rosary), catalog: catalog.packs)
     }
 
     private var pack: RosaryPack? {
@@ -74,12 +75,12 @@ struct RosaryView: View {
             }
         }
         .sheet(isPresented: $showsLanguages, onDismiss: openDownloadsIfNeeded) {
-            DevotionLanguageSheet(
-                kind: .rosary,
-                languages: packs.languages(for: .rosary),
+            LanguageSheet(
+                title: DevotionKind.rosary.languageTitle,
+                languages: choice.languages,
                 selected: choice.active,
                 onSelect: { code in
-                    session.select(code, for: .rosary)
+                    selection.select(code, for: .rosary)
                     stepIndex = 0
                 },
                 onDownload: { openDownloads = true }
@@ -88,7 +89,7 @@ struct RosaryView: View {
     }
 
     private var languageButton: some View {
-        DevotionLanguageButton(title: choice.buttonTitle, accessibilityLabel: "Rosary language") {
+        LanguageButton(title: choice.buttonTitle, accessibilityLabel: "Rosary language") {
             showsLanguages = true
         }
     }

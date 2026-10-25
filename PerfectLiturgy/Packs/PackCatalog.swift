@@ -15,6 +15,16 @@ nonisolated struct PackRecord: Codable, Equatable, Sendable, Identifiable {
 
     var id: String { packId }
 
+    /// The language name to show. The catalog's `language_name` when it sends one, else the pack's display name.
+    /// Nothing here knows a language: the name is whatever the pack list says.
+    var languageLabel: String {
+        for value in [languageName, displayName] {
+            let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !text.isEmpty { return text }
+        }
+        return language ?? packId
+    }
+
     init(
         packId: String,
         type: String,
@@ -138,12 +148,9 @@ enum PackSections {
         }
     }
 
+    /// The default language leads. Every other row sorts by its display name.
     private static func rank(_ language: String?) -> Int {
-        switch language {
-        case "en": 0
-        case "la": 1
-        default: 2
-        }
+        language == PackLanguages.defaultCode ? 0 : 1
     }
 }
 
@@ -174,26 +181,29 @@ enum PackLocale {
     }
 }
 
+/// The packs that ship inside the app. They name their own language, like any catalog row,
+/// and they stand in until the first catalog fetch. Delete a row here and the app forgets that pack.
 nonisolated enum PackSeed {
     static let rows: [PackRecord] = [
-        row("hymns-en", type: "hymns", language: "en", name: "English Hymns", mode: "live"),
-        row("hymns-la", type: "hymns", language: "la", name: "Latin Hymns", mode: "live"),
-        row("order-en", type: "order", language: "en", name: "Order of Mass · English", mode: "download"),
-        row("order-la", type: "order", language: "la", name: "Order of Mass · Latin", mode: "download"),
-        row("rosary-en", type: "rosary", language: "en", name: "Rosary · English", mode: "download"),
-        row("rosary-la", type: "rosary", language: "la", name: "Rosary · Latin", mode: "download"),
-        row("litanies-en", type: "litanies", language: "en", name: "Litanies · English", mode: "download"),
-        row("litanies-la", type: "litanies", language: "la", name: "Litanies · Latin", mode: "download"),
-        row("stations-en", type: "stations", language: "en", name: "Stations of the Cross · English", mode: "download"),
-        row("stations-la", type: "stations", language: "la", name: "Stations of the Cross · Latin", mode: "download"),
-        row("prayers-en", type: "prayers", language: "en", name: "Prayers · English", mode: "download"),
-        row("prayers-la", type: "prayers", language: "la", name: "Prayers · Latin", mode: "download"),
+        row("hymns-en", type: "hymns", language: "en", languageName: "English", name: "English Hymns", mode: "live"),
+        row("hymns-la", type: "hymns", language: "la", languageName: "Latin", name: "Latin Hymns", mode: "live"),
+        row("order-en", type: "order", language: "en", languageName: "English", name: "Order of Mass · English", mode: "download"),
+        row("order-la", type: "order", language: "la", languageName: "Latin", name: "Order of Mass · Latin", mode: "download"),
+        row("rosary-en", type: "rosary", language: "en", languageName: "English", name: "Rosary · English", mode: "download"),
+        row("rosary-la", type: "rosary", language: "la", languageName: "Latin", name: "Rosary · Latin", mode: "download"),
+        row("litanies-en", type: "litanies", language: "en", languageName: "English", name: "Litanies · English", mode: "download"),
+        row("litanies-la", type: "litanies", language: "la", languageName: "Latin", name: "Litanies · Latin", mode: "download"),
+        row("stations-en", type: "stations", language: "en", languageName: "English", name: "Stations of the Cross · English", mode: "download"),
+        row("stations-la", type: "stations", language: "la", languageName: "Latin", name: "Stations of the Cross · Latin", mode: "download"),
+        row("prayers-en", type: "prayers", language: "en", languageName: "English", name: "Prayers · English", mode: "download"),
+        row("prayers-la", type: "prayers", language: "la", languageName: "Latin", name: "Prayers · Latin", mode: "download"),
     ]
 
     private static func row(
         _ id: String,
         type: String,
         language: String,
+        languageName: String,
         name: String,
         mode: String
     ) -> PackRecord {
@@ -201,6 +211,7 @@ nonisolated enum PackSeed {
             packId: id,
             type: type,
             language: language,
+            languageName: languageName,
             displayName: name,
             requiresSignIn: true,
             mode: mode
@@ -247,9 +258,12 @@ nonisolated enum PackFiles {
         NotificationCenter.default.post(name: .packCatalogDidChange, object: nil)
     }
 
-    /// The hymn catalogues in the saved pack list. They name each hymn language on screen.
-    static func hymnRows(root: URL) -> [PackRecord] {
-        rowsForDisplay(root: root).filter { $0.type == "hymns" }
+    /// The saved pack list, plus any seeded row it leaves out. The language control reads this,
+    /// so a language that ships with the app keeps its name when the server omits its row.
+    static func rowsWithSeeds(root: URL) -> [PackRecord] {
+        let saved = rowsForDisplay(root: root)
+        let known = Set(saved.map(\.packId))
+        return saved + PackSeed.rows.filter { !known.contains($0.packId) }
     }
 
     static func loadCatalog(root: URL) -> StoredCatalog? {

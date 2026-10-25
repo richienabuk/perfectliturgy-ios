@@ -7,6 +7,7 @@ struct PressScaleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed && !reduceMotion
         configuration.label
+            .contentShape(Rectangle())
             .scaleEffect(pressed ? ControlMetrics.pressScale : 1)
             .animation(
                 reduceMotion ? nil : .easeOut(duration: ControlMetrics.pressDuration),
