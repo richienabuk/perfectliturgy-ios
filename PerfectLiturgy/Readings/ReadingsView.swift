@@ -413,26 +413,27 @@ struct ReadingsMonthSheet: View {
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
 
+    private var weekRows: Int {
+        max(month.cells.count / 7, 1)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
             monthRow
                 .padding(.horizontal, 12)
-            ScrollView {
-                LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(Array(letters.enumerated()), id: \.offset) { _, letter in
-                        Text(letter)
-                            .font(AppFont.interface(size: 13, weight: .semibold))
-                            .foregroundStyle(palette.mutedForeground.color)
-                            .frame(maxWidth: .infinity, minHeight: 28)
-                    }
-                    ForEach(Array(month.cells.enumerated()), id: \.offset) { _, date in
-                        dayCell(date)
-                    }
+            LazyVGrid(columns: columns, spacing: 6) {
+                ForEach(Array(letters.enumerated()), id: \.offset) { _, letter in
+                    Text(letter)
+                        .font(AppFont.interface(size: 13, weight: .semibold))
+                        .foregroundStyle(palette.mutedForeground.color)
+                        .frame(maxWidth: .infinity, minHeight: 28)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+                ForEach(Array(month.cells.enumerated()), id: \.offset) { _, date in
+                    dayCell(date)
+                }
             }
+            .padding(.horizontal, 16)
             HStack(spacing: 12) {
                 PLButton(title: "Today", kind: .outline) {
                     selected = today
@@ -441,14 +442,12 @@ struct ReadingsMonthSheet: View {
                 PLButton(title: "Use date", kind: .primary, action: onUse)
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 12)
         }
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.background.color)
         .tint(palette.primary.color)
-        .presentationDragIndicator(.visible)
-        .presentationDetents([.large])
-        .presentationCornerRadius(Radius.sheet)
-        .presentationBackground(palette.background.color)
+        .fittedBottomSheet(key: "readings.month.\(weekRows)", estimate: 220 + CGFloat(weekRows) * 50)
     }
 
     private var letters: [String] {

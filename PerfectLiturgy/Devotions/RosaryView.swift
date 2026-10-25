@@ -7,8 +7,10 @@ struct RosaryView: View {
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     @State private var showsLanguages = false
+    @State private var showsMysteries = false
     @State private var openDownloads = false
     @State private var mysteryID: String?
     @State private var stepIndex = 0
@@ -42,17 +44,23 @@ struct RosaryView: View {
         return steps[min(stepIndex, steps.count - 1)]
     }
 
+    /// Tablet and landscape share one control line so the prayer stays on screen.
+    private var usesSingleRow: Bool {
+        isWide || verticalSizeClass == .compact
+    }
+
     var body: some View {
         DevotionScreen(title: "Holy Rosary") {
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 16) {
-                            DevotionHeading(title: "Holy Rosary", support: DevotionKind.rosary.support)
-                                .id("rosary-top")
-                            languageButton
-                            if let pack, let mystery, let step {
-                                reader(pack: pack, mystery: mystery, step: step)
+                            controls
+                            if showsMysteries, let pack, let mystery {
+                                mysteryPicker(pack: pack, selected: mystery)
+                            }
+                            if let mystery, let step {
+                                reader(mystery: mystery, step: step)
                             } else {
                                 DevotionMissingLanguage(message: choice.unavailableMessage) {
                                     navigation.path.append(AppRoute.downloads)
@@ -62,11 +70,7 @@ struct RosaryView: View {
                         .devotionColumn(isWide: isWide)
                     }
                     .onChange(of: stepIndex) { _, _ in
-                        if step?.beads != nil {
-                            proxy.scrollTo("rosary-focus", anchor: .top)
-                        } else {
-                            proxy.scrollTo("rosary-top", anchor: .top)
-                        }
+                        proxy.scrollTo("rosary-focus", anchor: .top)
                     }
                 }
                 if step != nil {
@@ -88,35 +92,102 @@ struct RosaryView: View {
         }
     }
 
+    private var controls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if !usesSingleRow {
+                screenTitle
+            }
+            HStack(alignment: .center, spacing: 8) {
+                if usesSingleRow {
+                    screenTitle
+                    Spacer(minLength: 8)
+                }
+                languageButton
+                if mystery != nil {
+                    if !usesSingleRow {
+                        Spacer(minLength: 8)
+                    }
+                    mysteryToggle
+                }
+            }
+        }
+    }
+
+    private var screenTitle: some View {
+        Text("Holy Rosary")
+            .font(AppFont.heading(size: usesSingleRow ? 28 : 36))
+            .foregroundStyle(palette.foreground.color)
+            .tracking((usesSingleRow ? 28 : 36) * AppFont.headingTrackingFactor)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .accessibilityAddTraits(.isHeader)
+    }
+
     private var languageButton: some View {
-        LanguageButton(title: choice.buttonTitle, accessibilityLabel: "Rosary language") {
+        LanguageButton(title: choice.buttonTitle, accessibilityLabel: "Rosary language", fillsWidth: false) {
             showsLanguages = true
         }
     }
 
-    private func reader(pack: RosaryPack, mystery: RosaryMysterySet, step: RosaryStep) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("CHOOSE TODAY'S MYSTERIES")
-                .font(AppFont.eyebrow())
-                .tracking(AppFont.eyebrowTracking)
-                .foregroundStyle(palette.mutedForeground.color)
+    private var mysteryToggle: some View {
+        Button {
+            showsMysteries.toggle()
+        } label: {
+            HStack(spacing: 8) {
+                Text(mystery?.title ?? "Mysteries")
+                    .font(AppFont.interface(size: 15, weight: .semibold))
+                    .lineLimit(1)
+                Image(systemName: showsMysteries ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(palette.emphasis.color)
+            }
+            .foregroundStyle(palette.foreground.color)
+            .padding(.horizontal, 14)
+            .frame(minHeight: ControlMetrics.minimumHeight)
+            .background(palette.card.color, in: RoundedRectangle(cornerRadius: Radius.lg))
+            .overlay {
+                RoundedRectangle(cornerRadius: Radius.lg)
+                    .strokeBorder(showsMysteries ? palette.primary.color : palette.border.color, lineWidth: 1)
+            }
+        }
+        .buttonStyle(PressScaleButtonStyle())
+        .accessibilityLabel("Choose today's mysteries")
+        .accessibilityValue(mystery?.title ?? "")
+        .accessibilityAddTraits(showsMysteries ? .isSelected : [])
+    }
+
+    private func mysteryPicker(pack: RosaryPack, selected: RosaryMysterySet) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 ForEach(pack.mysteries) { set in
-                    mysteryChip(set, selected: set.id == mystery.id)
+                    mysteryChip(set, selected: set.id == selected.id)
                 }
             }
-            if let days = mystery.days, !days.isEmpty {
+            if let days = selected.days, !days.isEmpty {
                 Text(days)
                     .font(AppFont.interface(size: 13))
                     .foregroundStyle(palette.mutedForeground.color)
                     .accessibilityLabel("Suggested days, \(days)")
             }
-            contextBanner(mystery: mystery, step: step)
-            if let focus = step.beads, let label = step.beadLabel, let decade = step.decade {
-                beadCard(decade: decade, count: mystery.titles.count, focus: focus, label: label)
+        }
+    }
+
+    private func reader(mystery: RosaryMysterySet, step: RosaryStep) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if isWide, step.beads != nil {
+                HStack(alignment: .top, spacing: 16) {
+                    prayerColumn(mystery: mystery, step: step)
+                    if let focus = step.beads, let label = step.beadLabel, let decade = step.decade {
+                        beadCard(decade: decade, count: mystery.titles.count, focus: focus, label: label)
+                            .frame(maxWidth: 280)
+                    }
+                }
+            } else {
+                prayerColumn(mystery: mystery, step: step)
+                if let focus = step.beads, let label = step.beadLabel, let decade = step.decade {
+                    beadCard(decade: decade, count: mystery.titles.count, focus: focus, label: label)
+                }
             }
-            progress(step)
-            prayerCard(step)
             Text("Pray one step at a time. The progress follows the five decades.")
                 .font(AppFont.interface(size: 13))
                 .foregroundStyle(palette.mutedForeground.color)
@@ -125,10 +196,19 @@ struct RosaryView: View {
         }
     }
 
+    private func prayerColumn(mystery: RosaryMysterySet, step: RosaryStep) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            contextBanner(mystery: mystery, step: step)
+            prayerCard(step)
+            progress(step)
+        }
+    }
+
     private func mysteryChip(_ set: RosaryMysterySet, selected: Bool) -> some View {
         Button {
             mysteryID = set.id
             stepIndex = 0
+            showsMysteries = false
         } label: {
             Text(set.title)
                 .font(AppFont.interface(size: 14, weight: .semibold))
@@ -279,7 +359,13 @@ struct RosaryView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
         .background(palette.background.color)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(palette.border.color)
+                .frame(height: 1)
+        }
     }
 
     private func openDownloadsIfNeeded() {
