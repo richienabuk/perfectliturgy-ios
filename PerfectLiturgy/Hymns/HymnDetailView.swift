@@ -11,6 +11,7 @@ struct HymnDetailView: View {
     @Environment(\.isWideLayout) private var isWide
     @Environment(\.modelContext) private var modelContext
     @State private var page: HymnPage?
+    @State private var hymnPacks: [PackRecord] = []
     @Query private var bookmarks: [HymnBookmark]
 
     var body: some View {
@@ -33,6 +34,7 @@ struct HymnDetailView: View {
             loadPage()
         }
         .task(id: id) {
+            hymnPacks = PackFiles.rowsForDisplay(root: DevotionLibrary.applicationSupport).filter { $0.type == "hymns" }
             loadPage()
             guard page != nil else { return }
             try? HymnImporter.recordVisit(hymnID: id, in: modelContext)
@@ -41,6 +43,17 @@ struct HymnDetailView: View {
 
     private func loadPage() {
         page = HymnImporter.page(id: id, in: modelContext)
+    }
+
+    private func catalogueName(for hymn: HymnPage) -> String {
+        HymnLanguage.catalogueName(for: hymn.language, in: hymnPacks)
+    }
+
+    private func catalogueLine(_ hymn: HymnPage) -> String {
+        let plain = HymnLanguage.catalogueName(for: hymn.language)
+        let named = catalogueName(for: hymn)
+        guard hymn.catalogueLine.hasPrefix(plain) else { return hymn.catalogueLine }
+        return named + hymn.catalogueLine.dropFirst(plain.count)
     }
 
     private func detail(_ hymn: HymnPage) -> some View {
@@ -74,7 +87,7 @@ struct HymnDetailView: View {
                         }
                     }
                     HStack {
-                        Text(HymnLanguage.catalogueName(for: hymn.language).uppercased())
+                        Text(catalogueName(for: hymn).uppercased())
                             .font(AppFont.eyebrow())
                             .tracking(AppFont.eyebrowTracking)
                             .foregroundStyle(palette.emphasis.color)
@@ -98,7 +111,7 @@ struct HymnDetailView: View {
                     .font(AppFont.heading(size: titleSize))
                     .foregroundStyle(palette.foreground.color)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(wide ? hymn.wideMeta : hymn.catalogueLine)
+                Text(wide ? hymn.wideMeta : catalogueLine(hymn))
                     .font(AppFont.interface(size: 14))
                     .foregroundStyle(palette.mutedForeground.color)
                     .fixedSize(horizontal: false, vertical: true)

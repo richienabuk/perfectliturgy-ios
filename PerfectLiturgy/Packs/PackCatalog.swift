@@ -4,6 +4,8 @@ struct PackRecord: Codable, Equatable, Sendable, Identifiable {
     var packId: String
     var type: String
     var language: String?
+    /// Full language name from the catalog, such as `Efik`. The code stays on `language`.
+    var languageName: String?
     var displayName: String
     var revision: String
     var size: Int?
@@ -17,6 +19,7 @@ struct PackRecord: Codable, Equatable, Sendable, Identifiable {
         packId: String,
         type: String,
         language: String?,
+        languageName: String? = nil,
         displayName: String,
         revision: String = "",
         size: Int? = nil,
@@ -27,6 +30,7 @@ struct PackRecord: Codable, Equatable, Sendable, Identifiable {
         self.packId = packId
         self.type = type
         self.language = language
+        self.languageName = languageName
         self.displayName = displayName
         self.revision = revision
         self.size = size
@@ -39,6 +43,7 @@ struct PackRecord: Codable, Equatable, Sendable, Identifiable {
         case packId
         case type
         case language
+        case languageName
         case displayName
         case revision
         case size
@@ -52,6 +57,7 @@ struct PackRecord: Codable, Equatable, Sendable, Identifiable {
         packId = try container.decode(String.self, forKey: .packId)
         type = try container.decode(String.self, forKey: .type)
         language = try container.decodeIfPresent(String.self, forKey: .language)
+        languageName = try container.decodeIfPresent(String.self, forKey: .languageName)
         displayName = try container.decode(String.self, forKey: .displayName)
         revision = try container.decodeIfPresent(String.self, forKey: .revision) ?? ""
         size = try container.decodeIfPresent(Int.self, forKey: .size)
@@ -65,6 +71,7 @@ struct PackRecord: Codable, Equatable, Sendable, Identifiable {
         try container.encode(packId, forKey: .packId)
         try container.encode(type, forKey: .type)
         try container.encodeIfPresent(language, forKey: .language)
+        try container.encodeIfPresent(languageName, forKey: .languageName)
         try container.encode(displayName, forKey: .displayName)
         try container.encode(revision, forKey: .revision)
         try container.encodeIfPresent(size, forKey: .size)

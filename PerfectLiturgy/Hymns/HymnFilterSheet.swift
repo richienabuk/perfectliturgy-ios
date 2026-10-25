@@ -171,6 +171,7 @@ private struct HymnChipFlow: Layout {
 
 struct HymnLanguageSheet: View {
     var languages: [String]
+    var catalogues: [PackRecord]
     var selected: String?
     var onSelect: (String?) -> Void
     var onDownload: () -> Void
@@ -189,7 +190,7 @@ struct HymnLanguageSheet: View {
                 .padding(.bottom, 8)
             VStack(alignment: .leading, spacing: 4) {
                 choiceRow(title: "All languages", subtitle: nil, isSelected: selected == nil) {
-                    onSelect(nil)
+                    choose(nil)
                 }
                 ForEach(languages, id: \.self) { code in
                     languageRow(code)
@@ -244,12 +245,18 @@ struct HymnLanguageSheet: View {
 
     private func languageRow(_ code: String) -> some View {
         choiceRow(
-            title: HymnLanguage.name(for: code),
-            subtitle: HymnLanguage.catalogueName(for: code),
+            title: HymnLanguage.name(for: code, in: catalogues),
+            subtitle: HymnLanguage.catalogueName(for: code, in: catalogues),
             isSelected: code == selected
         ) {
-            onSelect(code)
+            choose(code)
         }
+    }
+
+    /// Close first. The hymn list filters after the sheet is gone.
+    private func choose(_ code: String?) {
+        dismiss()
+        onSelect(code)
     }
 
     private func choiceRow(title: String, subtitle: String?, isSelected: Bool, action: @escaping () -> Void) -> some View {
@@ -302,22 +309,23 @@ struct FittedBottomSheet: ViewModifier {
     @Environment(\.palette) private var palette
 
     func body(content: Content) -> some View {
+        let bottom = InterfaceAnchor.window.safeAreaInsets.bottom
         content
             .fixedSize(horizontal: false, vertical: true)
             .background {
                 GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: SheetHeightKey.self,
-                        value: proxy.size.height + proxy.safeAreaInsets.bottom
-                    )
+                    Color.clear.preference(key: SheetHeightKey.self, value: proxy.size.height)
                 }
             }
-            .onPreferenceChange(SheetHeightKey.self) { newValue in
-                guard newValue > 1, abs(height - newValue) > 1 else { return }
+            .onPreferenceChange(SheetHeightKey.self) { measured in
+                // The sheet's own bottom inset flips once the detent grows to fit it.
+                // Adding that inset back into the detent makes the height chase itself.
+                let next = measured + bottom
+                guard next > 1, abs(height - next) > 1 else { return }
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
                 withTransaction(transaction) {
-                    height = newValue
+                    height = next
                 }
             }
             .presentationDetents([.height(max(height, 1))])

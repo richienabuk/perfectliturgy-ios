@@ -11,6 +11,28 @@ import Testing
     #expect(development.host == "perfectliturgyapi.richienabuk.top")
 }
 
+@Test func `hymn languages use the catalogue language name and display name`() {
+    let efik = PackRecord(
+        packId: "hymns-efik",
+        type: "hymns",
+        language: "efik",
+        languageName: "Efik",
+        displayName: "Efik Hymns",
+        mode: "live"
+    )
+    #expect(HymnLanguage.name(for: "efik", in: [efik]) == "Efik")
+    #expect(HymnLanguage.catalogueName(for: "efik", in: [efik]) == "Efik Hymns")
+    let hausa = PackRecord(
+        packId: "hymns-ha",
+        type: "hymns",
+        language: "ha",
+        displayName: "Hausa Hymns",
+        mode: "live"
+    )
+    #expect(HymnLanguage.name(for: "ha", in: [hausa]) == "Hausa")
+    #expect(HymnLanguage.name(for: "yo") == "yo")
+}
+
 @Test func `the debug app calls the development api`() {
     let api = Bundle.main.object(forInfoDictionaryKey: "APIBaseURL") as? String
     let auth = Bundle.main.object(forInfoDictionaryKey: "AuthBaseURL") as? String
@@ -22,7 +44,7 @@ import Testing
     let live = Data("""
     {"data":[
       {"pack_id":"readings-rsv","type":"readings","display_name":"RSV","revision":"2026-01-01T00:00:00.000Z","size":1200000,"requires_sign_in":false,"mode":"live","language":"en"},
-      {"pack_id":"hymns-efi","type":"hymns","display_name":"Efik Hymns","revision":"","mode":"live","language":"efi"},
+      {"pack_id":"hymns-efi","type":"hymns","display_name":"Efik Hymns","revision":"","mode":"live","language":"efi","language_name":"Efik"},
       {"pack_id":"calendar-nigeria","type":"calendar","language":"ng","display_name":"Nigeria","revision":"2026-01-01T00:00:00.000Z","requires_sign_in":true,"mode":"download"}
     ],"page":1,"pageSize":3,"total":3}
     """.utf8)
@@ -30,6 +52,7 @@ import Testing
     let transport = ScriptTransport(pages: [live])
     let client = PackClient(transport: transport, apiBase: ServiceOrigin.production, token: nil)
     let listed = await PackInstaller.catalog(client: client, supportRoot: root)
+    #expect(listed.first { $0.packId == "hymns-efi" }?.languageName == "Efik")
     #expect(listed.contains { $0.packId == "hymns-efi" })
     #expect(listed.first { $0.packId == "hymns-efi" }?.requiresSignIn == true)
     #expect(PackSize.text(1_200_000) == "1.2 MB")

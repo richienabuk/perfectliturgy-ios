@@ -24,6 +24,7 @@ struct HymnsView: View {
     @State private var showsFilters = false
     @State private var showsLanguages = false
     @State private var openDownloadsAfterLanguage = false
+    @State private var hymnPacks: [PackRecord] = []
     @State private var visibleCount = HymnFilter.pageSize
     @State private var selectedID: String?
     @State private var debounce: Task<Void, Never>?
@@ -56,15 +57,25 @@ struct HymnsView: View {
         .sheet(isPresented: $showsLanguages, onDismiss: openDownloadsIfNeeded) {
             HymnLanguageSheet(
                 languages: languages,
+                catalogues: hymnPacks,
                 selected: activeLanguage,
-                onSelect: { language = $0 },
+                onSelect: { code in
+                    Task { @MainActor in
+                        await Task.yield()
+                        language = code
+                    }
+                },
                 onDownload: { openDownloadsAfterLanguage = true }
             )
         }
         .onChange(of: language) { _, _ in visibleCount = HymnFilter.pageSize }
         .onChange(of: season) { _, _ in visibleCount = HymnFilter.pageSize }
         .onChange(of: massPart) { _, _ in visibleCount = HymnFilter.pageSize }
-        .task { loadCatalogue() }
+        .task {
+            loadCatalogue()
+            reloadHymnPacks()
+        }
+        .onAppear { reloadHymnPacks() }
         .onReceive(NotificationCenter.default.publisher(for: .hymnStoreDidChange)) { _ in
             loadCatalogue()
         }
@@ -433,11 +444,15 @@ struct HymnsView: View {
     }
 
     private func rowLine(_ hymn: HymnSummary) -> String {
-        HymnLabels.rowLine(language: hymn.language, seasons: hymn.seasons, massParts: hymn.massParts)
+        HymnLabels.rowLine(language: hymn.language, seasons: hymn.seasons, massParts: hymn.massParts, catalogues: hymnPacks)
     }
 
     private func loadCatalogue() {
         catalogue = HymnImporter.catalogue(in: modelContext)
+    }
+
+    private func reloadHymnPacks() {
+        hymnPacks = PackFiles.rowsForDisplay(root: DevotionLibrary.applicationSupport).filter { $0.type == "hymns" }
     }
 
     private var languages: [String] {
@@ -453,7 +468,7 @@ struct HymnsView: View {
 
     private var languageButtonTitle: String {
         guard let activeLanguage else { return "All languages" }
-        return HymnLanguage.name(for: activeLanguage)
+        return HymnLanguage.name(for: activeLanguage, in: hymnPacks)
     }
 
     private var filter: HymnFilter {
