@@ -3,9 +3,13 @@ import SwiftUI
 
 struct SavedRow: Equatable, Identifiable {
     var id: String
+    var itemId: String
+    var type: String
     var title: String
     var detail: String
     var opens: Bool
+    var route: AppRoute?
+    var language: String?
 }
 
 enum SavedRows {
@@ -14,9 +18,9 @@ enum SavedRows {
 
     static func emptyNote(signedIn: Bool) -> String {
         if signedIn {
-            "Save a hymn from its page. It syncs with your Account when you're online."
+            "Save a hymn, a prayer, or a litany from its page. It syncs with your Account when you're online."
         } else {
-            "Save a hymn from its page. It stays on this device and opens here."
+            "Save a hymn, a prayer, or a litany from its page. It stays on this device and opens here."
         }
     }
 
@@ -27,9 +31,13 @@ enum SavedRows {
         if let hymn, packInstalled {
             return SavedRow(
                 id: bookmark.hymnId,
+                itemId: bookmark.hymnId,
+                type: BookmarkType.hymns,
                 title: hymn.title,
                 detail: detail(language: hymn.language, massParts: hymn.massParts, catalogues: catalogues),
-                opens: true
+                opens: true,
+                route: .hymn(id: bookmark.hymnId),
+                language: hymn.language
             )
         }
         let message = if language.isEmpty || packInstalled {
@@ -37,7 +45,121 @@ enum SavedRows {
         } else {
             "Hymn pack removed from this device"
         }
-        return SavedRow(id: bookmark.hymnId, title: bookmark.titleSnapshot, detail: message, opens: false)
+        return SavedRow(
+            id: bookmark.hymnId,
+            itemId: bookmark.hymnId,
+            type: BookmarkType.hymns,
+            title: bookmark.titleSnapshot,
+            detail: message,
+            opens: false,
+            route: nil,
+            language: language
+        )
+    }
+
+    /// An installed prayer or litany opens in the language it was saved in.
+    static func row(
+        bookmark: DevotionBookmark,
+        located: LocatedDevotion?,
+        installed: Set<String>,
+        catalogues: [PackRecord] = PackSeed.rows
+    ) -> SavedRow {
+        let packInstalled = !bookmark.language.isEmpty && installed.contains("\(bookmark.type)-\(bookmark.language)")
+        if let located, bookmark.language.isEmpty || packInstalled {
+            let name = PackLanguages.language(code: located.language, type: bookmark.type, in: catalogues).packName
+            return SavedRow(
+                id: bookmark.key,
+                itemId: bookmark.itemId,
+                type: bookmark.type,
+                title: located.title,
+                detail: name,
+                opens: true,
+                route: route(type: bookmark.type, id: bookmark.itemId),
+                language: located.language
+            )
+        }
+        let message = if bookmark.language.isEmpty || packInstalled {
+            "Not on this device"
+        } else if bookmark.type == BookmarkType.prayers {
+            "Prayer pack removed from this device"
+        } else if bookmark.type == BookmarkType.litanies {
+            "Litany pack removed from this device"
+        } else {
+            "Not on this device"
+        }
+        return SavedRow(
+            id: bookmark.key,
+            itemId: bookmark.itemId,
+            type: bookmark.type,
+            title: bookmark.titleSnapshot,
+            detail: message,
+            opens: false,
+            route: nil,
+            language: bookmark.language
+        )
+    }
+
+    static func route(type: String, id: String) -> AppRoute? {
+        switch type {
+        case BookmarkType.prayers: .prayer(id: id)
+        case BookmarkType.litanies: .litany(id: id)
+        default: nil
+        }
+    }
+
+    static func removeLabel(type: String) -> String {
+        switch type {
+        case BookmarkType.prayers: "Remove saved prayer"
+        case BookmarkType.litanies: "Remove saved litany"
+        default: "Remove saved hymn"
+        }
+    }
+
+    /// Newest first. `limit` keeps the home list to five. Saved passes no limit.
+    static func rows(
+        hymns: [HymnBookmark],
+        devotions: [DevotionBookmark],
+        hymnLookup: (String) -> HymnRecord?,
+        located: (DevotionBookmark) -> LocatedDevotion?,
+        installed: Set<String>,
+        catalogues: [PackRecord] = PackSeed.rows,
+        limit: Int? = nil
+    ) -> [SavedRow] {
+        enum Source {
+            case hymn(HymnBookmark)
+            case devotion(DevotionBookmark)
+        }
+        var dated: [(Date, String, Source)] = []
+        dated.reserveCapacity(hymns.count + devotions.count)
+        for bookmark in hymns {
+            dated.append((bookmark.createdAt, bookmark.hymnId, .hymn(bookmark)))
+        }
+        for bookmark in devotions {
+            dated.append((bookmark.createdAt, bookmark.key, .devotion(bookmark)))
+        }
+        dated.sort { lhs, rhs in
+            if lhs.0 != rhs.0 { return lhs.0 > rhs.0 }
+            return lhs.1 < rhs.1
+        }
+        let chosen = dated.prefix(limit ?? dated.count)
+        return chosen.map { item in
+            switch item.2 {
+            case .hymn(let bookmark):
+                row(
+                    bookmark: bookmark,
+                    hymn: hymnLookup(bookmark.hymnId),
+                    installed: installed,
+                    catalogues: catalogues
+                )
+            case .devotion(let bookmark):
+                row(
+                    bookmark: bookmark,
+                    located: located(bookmark),
+                    installed: installed,
+                    catalogues: catalogues
+                )
+            }
+        }
     }
 
     static func detail(language: String, massParts: [String], catalogues: [PackRecord] = PackSeed.rows) -> String {
@@ -55,9 +177,11 @@ struct SavedView: View {
     @Environment(InstalledPacks.self) private var packs
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
+    @Environment(LanguageSelection.self) private var selection
     @Environment(\.modelContext) private var modelContext
 
     @Query(sort: \HymnBookmark.createdAt, order: .reverse) private var bookmarks: [HymnBookmark]
+    @Query(sort: \DevotionBookmark.createdAt, order: .reverse) private var devotions: [DevotionBookmark]
     @State private var savedRows: [SavedRow] = []
 
     var body: some View {
@@ -96,6 +220,7 @@ struct SavedView: View {
         .toolbar(.hidden, for: .navigationBar)
         .task { reloadRows() }
         .onChange(of: bookmarks.map(\.hymnId)) { _, _ in reloadRows() }
+        .onChange(of: devotions.map(\.key)) { _, _ in reloadRows() }
         .onChange(of: packs.ids) { _, _ in reloadRows() }
         .onReceive(NotificationCenter.default.publisher(for: .hymnStoreDidChange)) { _ in
             reloadRows()
@@ -113,21 +238,31 @@ struct SavedView: View {
     }
 
     private func reloadRows() {
-        savedRows = bookmarks.map { bookmark in
-            SavedRows.row(
-                bookmark: bookmark,
-                hymn: HymnImporter.record(id: bookmark.hymnId, in: modelContext),
-                installed: packs.ids,
-                catalogues: PackCatalogStore.shared.packs
-            )
-        }
+        savedRows = SavedRows.rows(
+            hymns: bookmarks,
+            devotions: devotions,
+            hymnLookup: { HymnImporter.record(id: $0, in: modelContext) },
+            located: { bookmark in
+                DevotionBookmarks.locate(
+                    type: bookmark.type,
+                    id: bookmark.itemId,
+                    language: bookmark.language,
+                    installed: packs.ids
+                )
+            },
+            installed: packs.ids,
+            catalogues: PackCatalogStore.shared.packs
+        )
     }
 
     private func savedRow(_ row: SavedRow) -> some View {
         HStack(alignment: .center, spacing: 8) {
-            if row.opens {
+            if row.opens, let route = row.route {
                 Button {
-                    navigation.path.append(AppRoute.hymn(id: row.id))
+                    if let language = row.language, let kind = DevotionKind(rawValue: row.type) {
+                        selection.select(language, for: kind)
+                    }
+                    navigation.path.append(route)
                 } label: {
                     rowLabel(row)
                 }
@@ -171,7 +306,11 @@ struct SavedView: View {
 
     private func removeButton(_ row: SavedRow) -> some View {
         Button {
-            try? HymnImporter.removeBookmark(hymnID: row.id, in: modelContext)
+            if row.type == BookmarkType.hymns {
+                try? HymnImporter.removeBookmark(hymnID: row.itemId, in: modelContext)
+            } else {
+                try? DevotionBookmarks.remove(type: row.type, id: row.itemId, in: modelContext)
+            }
         } label: {
             Image(systemName: "bookmark.fill")
                 .font(.system(size: 16))
@@ -179,7 +318,7 @@ struct SavedView: View {
                 .frame(width: ControlMetrics.minimumHeight, height: ControlMetrics.minimumHeight)
         }
         .buttonStyle(PressScaleButtonStyle())
-        .accessibilityLabel("Remove saved hymn")
+        .accessibilityLabel(SavedRows.removeLabel(type: row.type))
         .accessibilityIdentifier("saved.remove.\(row.id)")
     }
 }
@@ -190,5 +329,6 @@ struct SavedView: View {
         .environment(AppNavigation())
         .environment(InstalledPacks(defaults: UserDefaults(suiteName: "saved-preview") ?? .standard))
         .environment(AppSession(token: nil, store: MemorySessionStore()))
+        .environment(LanguageSelection(defaults: UserDefaults(suiteName: "saved-preview") ?? .standard))
         .resolvePalette()
 }

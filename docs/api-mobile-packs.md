@@ -603,15 +603,30 @@ Translation key for local verse storage = `pack_id` without the `readings-` pref
 
 ### `PUT /v1/bookmarks`
 
-Auth: **required**. Merge local saved hymns after sign-in.
+Auth: **required**. Merge local saved hymns, prayers, and litanies after sign-in.
 
 **Body**
+
+`type` is a slug: `hymns`, `prayers` (special prayers), or `litanies`. `id` is that item's id. `createdAt` is milliseconds since epoch.
 
 ```json
 [
   {
-    "hymnId": "uuid",
-    "titleSnapshot": "Amazing Grace",
+    "type": "hymns",
+    "id": "uuid",
+    "titleSnapshot": "Test hymn one",
+    "createdAt": 1729000000000
+  },
+  {
+    "type": "prayers",
+    "id": "uuid",
+    "titleSnapshot": "Test prayer one",
+    "createdAt": 1729000000000
+  },
+  {
+    "type": "litanies",
+    "id": "uuid",
+    "titleSnapshot": "Test litany one",
     "createdAt": 1729000000000
   }
 ]
@@ -619,7 +634,7 @@ Auth: **required**. Merge local saved hymns after sign-in.
 
 ### `GET /v1/bookmarks`
 
-Auth: **required**. List envelope: `{ "data": [ …same bookmark rows… ], "page", "pageSize", "total" }`. Client merges into Room without deleting local-only rows unless the product later defines that.
+Auth: **required**. List envelope: `{ "data": [ …same bookmark rows… ], "page", "pageSize", "total" }`. Client merges by `type` and `id` without deleting local-only rows unless the product later defines that.
 
 `PUT` returns the same list envelope after merge.
 

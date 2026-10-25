@@ -3,11 +3,14 @@ import SwiftUI
 
 struct TodayView: View {
     @Environment(AppNavigation.self) private var navigation
+    @Environment(InstalledPacks.self) private var packs
+    @Environment(LanguageSelection.self) private var selection
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
     @Query(sort: \HymnBookmark.createdAt, order: .reverse) private var bookmarks: [HymnBookmark]
+    @Query(sort: \DevotionBookmark.createdAt, order: .reverse) private var devotions: [DevotionBookmark]
     @Environment(\.modelContext) private var modelContext
-    @State private var savedCatalogue: String?
+    @State private var savedRows: [SavedRow] = []
 
     private var page: TodayPage {
         TodayPageBuilder.page(for: CivilDate(Date()), lectionary: TodayLibrary.lectionary)
@@ -33,10 +36,12 @@ struct TodayView: View {
         .navigationTitle("Today")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
-        .task { loadSaved() }
-        .onChange(of: bookmarks.map(\.hymnId)) { _, _ in loadSaved() }
+        .task { reloadSaved() }
+        .onChange(of: bookmarks.map(\.hymnId)) { _, _ in reloadSaved() }
+        .onChange(of: devotions.map(\.key)) { _, _ in reloadSaved() }
+        .onChange(of: packs.ids) { _, _ in reloadSaved() }
         .onReceive(NotificationCenter.default.publisher(for: .hymnStoreDidChange)) { _ in
-            loadSaved()
+            reloadSaved()
         }
     }
 
@@ -79,10 +84,14 @@ struct TodayView: View {
             } link: {
                 "See saved"
             }
-            if let bookmark = bookmarks.first {
-                savedCard(bookmark)
-            } else {
+            if savedRows.isEmpty {
                 emptySavedCard
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(savedRows) { row in
+                        savedCard(row)
+                    }
+                }
             }
         }
     }
@@ -127,75 +136,79 @@ struct TodayView: View {
         }
     }
 
-    private func savedCard(_ bookmark: HymnBookmark) -> some View {
-        Button {
-            navigation.path.append(AppRoute.hymn(id: bookmark.hymnId))
-        } label: {
-            HStack(spacing: 12) {
-                markTile(systemName: "bookmark")
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(bookmark.titleSnapshot)
-                        .font(AppFont.interface(size: 16, weight: .semibold))
-                        .foregroundStyle(palette.foreground.color)
-                        .multilineTextAlignment(.leading)
-                    if let savedCatalogue {
-                        Text(savedCatalogue)
-                            .font(AppFont.interface(size: 13))
-                            .foregroundStyle(palette.mutedForeground.color)
+    private func savedCard(_ row: SavedRow) -> some View {
+        Group {
+            if row.opens, let route = row.route {
+                Button {
+                    if let language = row.language, let kind = DevotionKind(rawValue: row.type) {
+                        selection.select(language, for: kind)
                     }
+                    navigation.path.append(route)
+                } label: {
+                    savedLabel(row)
                 }
-                Spacer(minLength: 8)
+                .buttonStyle(PressScaleButtonStyle())
+                .accessibilityLabel("Open \(row.title)")
+            } else {
+                savedLabel(row)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(row.title). \(row.detail)")
+            }
+        }
+    }
+
+    private func savedLabel(_ row: SavedRow) -> some View {
+        HStack(spacing: 12) {
+            markTile(systemName: "bookmark")
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.title)
+                    .font(AppFont.interface(size: 16, weight: .semibold))
+                    .foregroundStyle(row.opens ? palette.foreground.color : palette.mutedForeground.color)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(row.detail)
+                    .font(AppFont.interface(size: 13))
+                    .foregroundStyle(palette.mutedForeground.color)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            if row.opens {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(palette.mutedForeground.color)
+                    .accessibilityHidden(true)
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: ControlMetrics.minimumHeight, alignment: .leading)
-            .background(palette.secondary.color, in: RoundedRectangle(cornerRadius: Radius.lg))
         }
-        .buttonStyle(PressScaleButtonStyle())
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: ControlMetrics.minimumHeight, alignment: .leading)
+        .background(palette.secondary.color, in: RoundedRectangle(cornerRadius: Radius.lg))
     }
 
-    private func loadSaved() {
-        guard let bookmark = bookmarks.first else {
-            savedCatalogue = nil
-            return
-        }
-        guard let hymn = HymnImporter.record(id: bookmark.hymnId, in: modelContext) else {
-            savedCatalogue = nil
-            return
-        }
-        savedCatalogue = HymnLanguage.catalogueName(for: hymn.language, in: PackCatalogStore.shared.packs)
+    private func reloadSaved() {
+        savedRows = SavedRows.rows(
+            hymns: bookmarks,
+            devotions: devotions,
+            hymnLookup: { HymnImporter.record(id: $0, in: modelContext) },
+            located: { bookmark in
+                DevotionBookmarks.locate(
+                    type: bookmark.type,
+                    id: bookmark.itemId,
+                    language: bookmark.language,
+                    installed: packs.ids
+                )
+            },
+            installed: packs.ids,
+            catalogues: PackCatalogStore.shared.packs,
+            limit: 5
+        )
     }
 
     private var emptySavedCard: some View {
-        Button {
-            navigation.tab = .hymns
-        } label: {
-            HStack(spacing: 12) {
-                markTile(systemName: "bookmark")
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("No hymn is saved yet.")
-                        .font(AppFont.interface(size: 16, weight: .semibold))
-                        .foregroundStyle(palette.foreground.color)
-                    Text("Open hymns")
-                        .font(AppFont.interface(size: 13))
-                        .foregroundStyle(palette.mutedForeground.color)
-                }
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(palette.mutedForeground.color)
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: ControlMetrics.minimumHeight, alignment: .leading)
-            .background(palette.card.color, in: RoundedRectangle(cornerRadius: Radius.lg))
-            .overlay {
-                RoundedRectangle(cornerRadius: Radius.lg)
-                    .strokeBorder(palette.border.color, lineWidth: 1)
-            }
-        }
-        .buttonStyle(PressScaleButtonStyle())
+        Text("Save a hymn, a prayer, or a litany from its page.")
+            .font(AppFont.body())
+            .foregroundStyle(palette.mutedForeground.color)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func markTile(systemName: String) -> some View {
@@ -216,5 +229,7 @@ private enum TodayLibrary {
         .modelContainer(try! HymnStore.make(inMemory: true))
         .environment(DesignPreferences())
         .environment(AppNavigation())
+        .environment(InstalledPacks(defaults: UserDefaults(suiteName: "today-preview") ?? .standard))
+        .environment(LanguageSelection(defaults: UserDefaults(suiteName: "today-preview") ?? .standard))
         .resolvePalette()
 }

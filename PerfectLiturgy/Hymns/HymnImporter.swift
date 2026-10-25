@@ -517,6 +517,7 @@ enum HymnStore {
         HymnRecord.self,
         HymnSectionRecord.self,
         HymnBookmark.self,
+        DevotionBookmark.self,
         HymnVisit.self,
         BibleVerseRecord.self,
         BibleVersionRecord.self,

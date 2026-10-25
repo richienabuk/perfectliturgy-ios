@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 struct PrayersView: View {
@@ -7,6 +8,9 @@ struct PrayersView: View {
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.palette) private var palette
     @Environment(\.splitsColumns) private var splitsColumns
+
+    @Environment(\.modelContext) private var modelContext
+    @Query private var saved: [DevotionBookmark]
 
     @State private var showsLanguages = false
     @State private var openDownloads = false
@@ -85,7 +89,15 @@ struct PrayersView: View {
                                     .foregroundStyle(palette.mutedForeground.color)
                                     .padding(.top, 8)
                                 ForEach(group.prayers) { prayer in
-                                    DevotionListRow(title: prayer.title, subtitle: prayer.summary) {
+                                    DevotionListRow(
+                                        title: prayer.title,
+                                        subtitle: prayer.summary,
+                                        saved: isSaved(prayer.id),
+                                        saveLabel: "Save prayer",
+                                        removeLabel: "Remove saved prayer",
+                                        saveIdentifier: "prayer.row.save.\(prayer.id)",
+                                        onToggleSaved: { toggle(prayer) }
+                                    ) {
                                         open(prayer.id)
                                     }
                                 }
@@ -132,6 +144,21 @@ struct PrayersView: View {
         }
     }
 
+    private func isSaved(_ id: String) -> Bool {
+        saved.contains { $0.type == BookmarkType.prayers && $0.itemId == id }
+    }
+
+    private func toggle(_ prayer: SpecialPrayer) {
+        guard let language = choice.active else { return }
+        try? DevotionBookmarks.toggle(
+            type: BookmarkType.prayers,
+            id: prayer.id,
+            title: prayer.title,
+            language: language,
+            in: modelContext
+        )
+    }
+
     private func open(_ id: String) {
         if splitsColumns {
             selectedID = id
@@ -157,6 +184,8 @@ struct PrayerView: View {
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
+    @Environment(\.modelContext) private var modelContext
+    @Query private var saved: [DevotionBookmark]
 
     private var choice: DevotionLanguageChoice {
         DevotionLanguageChoice(.prayers, requested: selection.code(for: .prayers), installed: packs.languages(for: .prayers), catalog: catalog.packs)
@@ -197,8 +226,27 @@ struct PrayerView: View {
     }
 
     private func prayerBody(_ prayer: SpecialPrayer) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ReadingText(text: prayer.title, role: DevotionText.part)
+        let isSaved = saved.contains { $0.type == BookmarkType.prayers && $0.itemId == prayer.id }
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 8) {
+                ReadingText(text: prayer.title, role: DevotionText.part)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                SaveMark(
+                    saved: isSaved,
+                    saveLabel: "Save prayer",
+                    removeLabel: "Remove saved prayer",
+                    identifier: "prayer.save.\(prayer.id)"
+                ) {
+                    guard let language = choice.active else { return }
+                    try? DevotionBookmarks.toggle(
+                        type: BookmarkType.prayers,
+                        id: prayer.id,
+                        title: prayer.title,
+                        language: language,
+                        in: modelContext
+                    )
+                }
+            }
             if let summary = prayer.summary, !summary.isEmpty {
                 Text(summary)
                     .font(AppFont.interface(size: 15))

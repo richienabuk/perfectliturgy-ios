@@ -61,7 +61,7 @@ Import bundled hymns into SwiftData once. A second launch does not insert the sa
 
 Search key is the accent-folded lowercase join of title, first line, and lyrics. Folding strips combining marks. Display text stays as stored.
 
-**Bookmark.** `hymnId`, `titleSnapshot`, `createdAt`. Newest first.
+**Bookmark.** `type` is `hymns`, `prayers`, or `litanies`. `id` is that item's id. `titleSnapshot` and `createdAt` are stored with it. The device also keeps the language code. Newest first. `PUT` and `GET /v1/bookmarks` send `type`, `id`, `titleSnapshot`, and `createdAt` in milliseconds.
 
 **Verse.** Identity is translation, book, chapter, and verse. Store the text once. A tombstone deletes that key. Translation id is the pack id without the `readings-` prefix.
 
@@ -200,7 +200,7 @@ Stanza fill is `#f8f4eb` in light and `#1b2a22` in dark. Refrain fill is `#edf0e
 
 ### Today
 
-Uppercase date eyebrow, `EEEE · d MMMM yyyy`. Heading "Readings and Hymns for Mass today." Support line "Readings and saved Hymns in your languages." Forest banner with the celebration and week mark. "Today's readings" lists slot label and reference. "Open readings" selects the Readings tab. "For later" shows the first bookmark and opens that hymn, or opens Hymns when nothing is saved.
+Uppercase date eyebrow, `EEEE · d MMMM yyyy`. Heading "Readings and Hymns for Mass today." Support line "Readings and saved Hymns in your languages." Forest banner with the celebration and week mark. "Today's readings" lists slot label and reference. "Open readings" selects the Readings tab. "For later" shows the five most recent bookmarks, newest first. Tapping one opens that hymn, prayer, or litany. An item that is not on this device stays closed. When nothing is saved, it says "Save a hymn, a prayer, or a litany from its page." and does not link away.
 
 ### Readings
 
@@ -222,7 +222,7 @@ When a signed-out person has an installed live pack whose catalog revision diffe
 
 ### Saved
 
-Heading "Saved". Support "Keep what you want close at hand." Empty and signed out: "Save a hymn from its page. It stays on this device and opens here." Empty and signed in: "Save a hymn from its page. It syncs with your Account when you're online." A row shows the title, then the catalogue and first Mass part when the hymn's language is installed. A missing hymn keeps the title snapshot, says "Not on this device" or "Hymn pack removed from this device", and does not open. The row can remove the bookmark.
+Heading "Saved". Support "Keep what you want close at hand." Empty and signed out: "Save a hymn, a prayer, or a litany from its page. It stays on this device and opens here." Empty and signed in: "Save a hymn, a prayer, or a litany from its page. It syncs with your Account when you're online." A hymn row shows the title, then the catalogue and first Mass part when that language is installed. A prayer or litany row shows the title and the pack name when that language is installed. A missing item keeps the title snapshot, says "Not on this device" or that the pack was removed, and does not open. The row can remove the bookmark.
 
 ### Devotions
 
@@ -240,9 +240,9 @@ That is 81 steps. The meditation line is "Consider {mystery}. Hold this moment i
 
 **Stations.** List, then one station. Orders 1–14 use the bundled illustration. Show the title, the scripture citation, the meditation, and the prayer. The meditation is a reflection, not a scripture quotation.
 
-**Litanies.** List, then one litany. A line is call and response. A line with no response is one full-width row.
+**Litanies.** List, then one litany. A line is call and response. A line with no response is one full-width row. The list and the litany page can save it.
 
-**Special Prayers.** List, then one prayer. The body keeps newlines.
+**Special Prayers.** List, then one prayer. The body keeps newlines. The list and the prayer page can save it.
 
 ### Downloads
 
@@ -260,7 +260,7 @@ Settings heading "Settings". Support "Set the reading surface to suit you." Appe
 
 Signed-out Account offers Google, Apple, and email magic link. Google and magic link use `ASWebAuthenticationSession` and return through `perfectliturgy://auth` with `session_token` in the query or `token` in the fragment. Confirm with `GET /api/auth/get-session` and store the token in the Keychain. Apple uses the native Sign in with Apple button. Signed-in Account shows the name and email, sign-out, sync, and a way to Saved.
 
-After sign-in, `PUT /v1/bookmarks` with the local rows, then `GET /v1/bookmarks`, and merge by hymn id.
+After sign-in, `PUT /v1/bookmarks` with the local rows, then `GET /v1/bookmarks`, and merge by type and id. Local rows stay.
 
 ### More
 

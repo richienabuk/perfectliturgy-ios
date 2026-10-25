@@ -7,7 +7,8 @@ struct AccountView: View {
     @Environment(\.palette) private var palette
     @Environment(\.modelContext) private var modelContext
 
-    @Query private var bookmarks: [HymnBookmark]
+    @Query private var hymnBookmarks: [HymnBookmark]
+    @Query private var devotionBookmarks: [DevotionBookmark]
     @State private var email = ""
     @FocusState private var emailFocused: Bool
 
@@ -132,7 +133,7 @@ struct AccountView: View {
                         Text(AccountCopy.savedTitle)
                             .font(AppFont.interface(size: 16, weight: .semibold))
                             .foregroundStyle(palette.foreground.color)
-                        Text(AccountCopy.savedDetail(count: bookmarks.count))
+                        Text(AccountCopy.savedDetail(count: hymnBookmarks.count + devotionBookmarks.count))
                             .font(AppFont.body(size: 14))
                             .foregroundStyle(palette.mutedForeground.color)
                     }

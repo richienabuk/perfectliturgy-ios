@@ -15,7 +15,7 @@ enum AccountCopy {
     static let signInFailed = "Sign-in did not finish. Try again."
     static let connection = "Check the connection and try again."
     static let emailMissing = "Enter an email address."
-    static let bookmarksKept = "Saved hymns stay on this device. They will join your Account when you're online."
+    static let bookmarksKept = "Saved items stay on this device. They will join your Account when you're online."
 
     static func savedDetail(count: Int) -> String {
         switch count {
@@ -351,8 +351,12 @@ final class AppSession {
 
     func mergeBookmarks(client: AuthClient, context: ModelContext) async throws {
         guard let token, !token.isEmpty else { return }
-        let local = try context.fetch(FetchDescriptor<HymnBookmark>())
-        let pushed = try await client.pushBookmarks(BookmarkSync.payload(from: local), bearer: token)
+        let hymns = try context.fetch(FetchDescriptor<HymnBookmark>())
+        let devotions = try context.fetch(FetchDescriptor<DevotionBookmark>())
+        let pushed = try await client.pushBookmarks(
+            BookmarkSync.payload(hymns: hymns, devotions: devotions),
+            bearer: token
+        )
         try BookmarkSync.merge(pushed, into: context)
         let remote = try await client.bookmarks(bearer: token)
         try BookmarkSync.merge(remote, into: context)

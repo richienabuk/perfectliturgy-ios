@@ -13,22 +13,38 @@ struct ConfirmedSession: Equatable, Sendable {
     var profile: AccountProfile
 }
 
+/// Slugs the bookmark route accepts. `prayers` is special prayers.
+nonisolated enum BookmarkType {
+    static let hymns = "hymns"
+    static let prayers = "prayers"
+    static let litanies = "litanies"
+
+    static func key(type: String, id: String) -> String {
+        "\(type)|\(id)"
+    }
+}
+
 struct BookmarkDraft: Equatable, Sendable {
-    var hymnId: String
+    var type: String
+    var id: String
     var titleSnapshot: String
     var createdAt: Int64
+
+    var key: String { BookmarkType.key(type: type, id: id) }
 }
 
 extension BookmarkDraft: Codable {
     private enum CodingKeys: String, CodingKey {
-        case hymnId
+        case type
+        case id
         case titleSnapshot
         case createdAt
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        hymnId = try container.decode(String.self, forKey: .hymnId)
+        type = try container.decode(String.self, forKey: .type)
+        id = try container.decode(String.self, forKey: .id)
         titleSnapshot = try container.decodeIfPresent(String.self, forKey: .titleSnapshot) ?? ""
         if let value = try container.decodeIfPresent(Int64.self, forKey: .createdAt) {
             createdAt = value
@@ -41,7 +57,8 @@ extension BookmarkDraft: Codable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(hymnId, forKey: .hymnId)
+        try container.encode(type, forKey: .type)
+        try container.encode(id, forKey: .id)
         try container.encode(titleSnapshot, forKey: .titleSnapshot)
         try container.encode(createdAt, forKey: .createdAt)
     }
@@ -163,7 +180,7 @@ struct AuthClient {
         var seen: Set<String> = []
         while page <= 30 {
             let envelope = try await bookmarkPage(page, bearer: bearer)
-            for row in envelope.rows where seen.insert(row.hymnId).inserted {
+            for row in envelope.rows where seen.insert(row.key).inserted {
                 collected.append(row)
             }
             if envelope.rows.isEmpty || envelope.finished || collected.count >= envelope.total {
@@ -301,32 +318,64 @@ private struct BookmarkPage {
 }
 
 enum BookmarkSync {
-    static func payload(from bookmarks: [HymnBookmark]) -> [BookmarkDraft] {
-        bookmarks.map { bookmark in
+    static func payload(hymns: [HymnBookmark], devotions: [DevotionBookmark]) -> [BookmarkDraft] {
+        let hymnRows = hymns.map { bookmark in
             BookmarkDraft(
-                hymnId: bookmark.hymnId,
+                type: BookmarkType.hymns,
+                id: bookmark.hymnId,
                 titleSnapshot: bookmark.titleSnapshot,
-                createdAt: Int64((bookmark.createdAt.timeIntervalSince1970 * 1000).rounded())
+                createdAt: milliseconds(bookmark.createdAt)
             )
         }
+        let devotionRows = devotions.map { bookmark in
+            BookmarkDraft(
+                type: bookmark.type,
+                id: bookmark.itemId,
+                titleSnapshot: bookmark.titleSnapshot,
+                createdAt: milliseconds(bookmark.createdAt)
+            )
+        }
+        return hymnRows + devotionRows
     }
 
     /// Inserts account rows the device does not have. Local rows stay, including after sign-out.
     static func merge(_ remote: [BookmarkDraft], into context: ModelContext) throws {
-        let local = try context.fetch(FetchDescriptor<HymnBookmark>())
-        let localIDs = Set(local.map(\.hymnId))
-        for row in remote where !localIDs.contains(row.hymnId) {
-            context.insert(
-                HymnBookmark(
-                    hymnId: row.hymnId,
-                    titleSnapshot: row.titleSnapshot,
-                    language: "",
-                    createdAt: Date(timeIntervalSince1970: Double(row.createdAt) / 1000)
+        let hymns = try context.fetch(FetchDescriptor<HymnBookmark>())
+        let devotions = try context.fetch(FetchDescriptor<DevotionBookmark>())
+        var hymnIDs = Set(hymns.map(\.hymnId))
+        var devotionKeys = Set(devotions.map(\.key))
+        for row in remote where !row.type.isEmpty && !row.id.isEmpty {
+            let createdAt = Date(timeIntervalSince1970: Double(row.createdAt) / 1000)
+            if row.type == BookmarkType.hymns {
+                guard hymnIDs.insert(row.id).inserted else { continue }
+                context.insert(
+                    HymnBookmark(
+                        hymnId: row.id,
+                        titleSnapshot: row.titleSnapshot,
+                        language: "",
+                        createdAt: createdAt
+                    )
                 )
-            )
+            } else {
+                let key = row.key
+                guard devotionKeys.insert(key).inserted else { continue }
+                context.insert(
+                    DevotionBookmark(
+                        type: row.type,
+                        itemId: row.id,
+                        titleSnapshot: row.titleSnapshot,
+                        language: "",
+                        createdAt: createdAt
+                    )
+                )
+            }
         }
         if context.hasChanges {
             try context.save()
         }
+    }
+
+    private static func milliseconds(_ date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 * 1000).rounded())
     }
 }

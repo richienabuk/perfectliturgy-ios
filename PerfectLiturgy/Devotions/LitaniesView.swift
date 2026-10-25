@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 struct LitaniesView: View {
@@ -7,6 +8,9 @@ struct LitaniesView: View {
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.palette) private var palette
     @Environment(\.splitsColumns) private var splitsColumns
+
+    @Environment(\.modelContext) private var modelContext
+    @Query private var saved: [DevotionBookmark]
 
     @State private var showsLanguages = false
     @State private var openDownloads = false
@@ -84,7 +88,12 @@ struct LitaniesView: View {
                             DevotionListRow(
                                 number: String(format: "%02d", index + 1),
                                 title: litany.title,
-                                subtitle: litany.summary
+                                subtitle: litany.summary,
+                                saved: isSaved(litany.id),
+                                saveLabel: "Save litany",
+                                removeLabel: "Remove saved litany",
+                                saveIdentifier: "litany.row.save.\(litany.id)",
+                                onToggleSaved: { toggle(litany) }
                             ) {
                                 open(litany.id)
                             }
@@ -129,6 +138,21 @@ struct LitaniesView: View {
         }
     }
 
+    private func isSaved(_ id: String) -> Bool {
+        saved.contains { $0.type == BookmarkType.litanies && $0.itemId == id }
+    }
+
+    private func toggle(_ litany: Litany) {
+        guard let language = choice.active else { return }
+        try? DevotionBookmarks.toggle(
+            type: BookmarkType.litanies,
+            id: litany.id,
+            title: litany.title,
+            language: language,
+            in: modelContext
+        )
+    }
+
     private func open(_ id: String) {
         if splitsColumns {
             selectedID = id
@@ -154,6 +178,8 @@ struct LitanyView: View {
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
+    @Environment(\.modelContext) private var modelContext
+    @Query private var saved: [DevotionBookmark]
 
     private var choice: DevotionLanguageChoice {
         DevotionLanguageChoice(.litanies, requested: selection.code(for: .litanies), installed: packs.languages(for: .litanies), catalog: catalog.packs)
@@ -194,9 +220,28 @@ struct LitanyView: View {
     }
 
     private func litanyBody(_ litany: Litany) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let isSaved = saved.contains { $0.type == BookmarkType.litanies && $0.itemId == litany.id }
+        return VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
-                ReadingText(text: litany.title, role: DevotionText.part)
+                HStack(alignment: .top, spacing: 8) {
+                    ReadingText(text: litany.title, role: DevotionText.part)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    SaveMark(
+                        saved: isSaved,
+                        saveLabel: "Save litany",
+                        removeLabel: "Remove saved litany",
+                        identifier: "litany.save.\(litany.id)"
+                    ) {
+                        guard let language = choice.active else { return }
+                        try? DevotionBookmarks.toggle(
+                            type: BookmarkType.litanies,
+                            id: litany.id,
+                            title: litany.title,
+                            language: language,
+                            in: modelContext
+                        )
+                    }
+                }
                 if let summary = litany.summary, !summary.isEmpty {
                     Text(summary)
                         .font(AppFont.interface(size: 15))
