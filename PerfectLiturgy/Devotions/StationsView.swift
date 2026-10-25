@@ -134,9 +134,6 @@ struct StationView: View {
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
 
-    @State private var showsLanguages = false
-    @State private var openDownloads = false
-
     private var choice: DevotionLanguageChoice {
         DevotionLanguageChoice(.stations, requested: selection.code(for: .stations), installed: packs.languages(for: .stations), catalog: catalog.packs)
     }
@@ -162,22 +159,12 @@ struct StationView: View {
             }
         }
         .accessibilityIdentifier("station.\(order)")
-        .sheet(isPresented: $showsLanguages, onDismiss: openDownloadsIfNeeded) {
-            LanguageSheet(
-                title: DevotionKind.stations.languageTitle,
-                languages: choice.languages,
-                selected: choice.active,
-                onSelect: { selection.select($0, for: .stations) },
-                onDownload: { openDownloads = true }
-            )
-        }
     }
 
     private var bodyContent: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    languageButton
                     if let station {
                         stationBody(station)
                     } else {
@@ -194,12 +181,6 @@ struct StationView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(palette.background.color)
-    }
-
-    private var languageButton: some View {
-        LanguageButton(title: choice.buttonTitle, accessibilityLabel: "Stations language") {
-            showsLanguages = true
-        }
     }
 
     private func stationBody(_ station: Station) -> some View {
@@ -269,12 +250,6 @@ struct StationView: View {
         guard showsChrome, !navigation.path.isEmpty else { return }
         navigation.path.removeLast()
         navigation.path.append(AppRoute.station(order: next))
-    }
-
-    private func openDownloadsIfNeeded() {
-        guard openDownloads else { return }
-        openDownloads = false
-        navigation.path.append(AppRoute.downloads)
     }
 }
 
