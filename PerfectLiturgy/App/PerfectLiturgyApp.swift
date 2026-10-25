@@ -11,6 +11,20 @@ struct PerfectLiturgyApp: App {
     @State private var packs: InstalledPacks
     @State private var languages = LanguageSelection()
     @State private var session: AppSession
+    @State private var bookmarkPush: Task<Void, Never>?
+
+    /// A save or removal reaches the Account soon after it is made, on any connection that works.
+    /// Several quick changes send once. A failed push waits for the next sync.
+    private func pushBookmarksSoon() {
+        guard session.isSignedIn else { return }
+        bookmarkPush?.cancel()
+        let session = session
+        bookmarkPush = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled, session.isSignedIn, LinkMonitor.shared.link.online else { return }
+            try? await session.mergeBookmarks(client: .live, context: HymnStore.shared.mainContext)
+        }
+    }
 
     init() {
         AppFonts.register()
@@ -42,6 +56,26 @@ struct PerfectLiturgyApp: App {
                     Task {
                         await session.accept(url, client: .live, context: HymnStore.shared.mainContext)
                     }
+                }
+                .alert(
+                    AccountCopy.confirmTitle,
+                    isPresented: Binding(
+                        get: { session.incoming != nil },
+                        set: { if !$0 { session.declineIncoming() } }
+                    ),
+                    presenting: session.incoming
+                ) { _ in
+                    Button(AccountCopy.confirmAction) {
+                        Task {
+                            await session.confirmIncoming(client: .live, context: HymnStore.shared.mainContext)
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: { incoming in
+                    Text(AccountCopy.confirmMessage(email: incoming.email, replacing: session.profile?.email))
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .bookmarksDidChange)) { _ in
+                    pushBookmarksSoon()
                 }
                 .task {
                     LinkMonitor.shared.onUpdate = {

@@ -16,6 +16,15 @@ enum AccountCopy {
     static let connection = "Check the connection and try again."
     static let emailMissing = "Enter an email address."
     static let bookmarksKept = "Saved items stay on this device. They will join your Account when you're online."
+    static let confirmTitle = "Sign in?"
+    static let confirmAction = "Sign in"
+
+    static func confirmMessage(email: String, replacing current: String?) -> String {
+        if let current, !current.isEmpty, current != email {
+            return "A link wants to sign in \(email). You are signed in as \(current). Only continue if you asked for this link."
+        }
+        return "A link wants to sign in \(email). Only continue if you asked for this link."
+    }
 
     static func savedDetail(count: Int) -> String {
         switch count {
@@ -50,11 +59,21 @@ protocol SessionStoring: AnyObject {
     var token: String? { get }
     func save(_ token: String) throws
     func clear()
+    /// A token the server has not yet been told to end. It is tried again on the next launch.
+    var pendingRevoke: String? { get }
+    func savePendingRevoke(_ token: String)
+    func clearPendingRevoke()
+    /// The signed-in name and email, kept so the Account screen can show them before the server answers.
+    var cachedAccount: String? { get }
+    func saveCachedAccount(_ json: String)
+    func clearCachedAccount()
 }
 
 enum KeychainSession {
     static let service = "com.perfectliturgy.session"
     static let account = "token"
+    static let revokeAccount = "revoke"
+    static let profileAccount = "profile"
 
     static var token: String? {
         read(service: service, account: account)
@@ -85,13 +104,13 @@ enum KeychainSession {
         ]
         let attributes: [String: Any] = [
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
         ]
         let updated = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if updated == errSecItemNotFound {
             var add = query
             add[kSecValueData as String] = data
-            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
             let added = SecItemAdd(add as CFDictionary, nil)
             guard added == errSecSuccess else { throw KeychainError(status: added) }
             return
@@ -133,6 +152,30 @@ final class KeychainSessionStore: SessionStoring {
     func clear() {
         KeychainSession.clear(service: service, account: account)
     }
+
+    var pendingRevoke: String? {
+        KeychainSession.read(service: service, account: KeychainSession.revokeAccount)
+    }
+
+    func savePendingRevoke(_ token: String) {
+        try? KeychainSession.save(token, service: service, account: KeychainSession.revokeAccount)
+    }
+
+    func clearPendingRevoke() {
+        KeychainSession.clear(service: service, account: KeychainSession.revokeAccount)
+    }
+
+    var cachedAccount: String? {
+        KeychainSession.read(service: service, account: KeychainSession.profileAccount)
+    }
+
+    func saveCachedAccount(_ json: String) {
+        try? KeychainSession.save(json, service: service, account: KeychainSession.profileAccount)
+    }
+
+    func clearCachedAccount() {
+        KeychainSession.clear(service: service, account: KeychainSession.profileAccount)
+    }
 }
 
 final class MemorySessionStore: SessionStoring {
@@ -145,35 +188,87 @@ final class MemorySessionStore: SessionStoring {
     func clear() {
         token = nil
     }
+
+    var pendingRevoke: String?
+
+    func savePendingRevoke(_ token: String) {
+        pendingRevoke = token
+    }
+
+    func clearPendingRevoke() {
+        pendingRevoke = nil
+    }
+
+    var cachedAccount: String?
+
+    func saveCachedAccount(_ json: String) {
+        cachedAccount = json
+    }
+
+    func clearCachedAccount() {
+        cachedAccount = nil
+    }
 }
 
+/// The signed-in name and email. They live in the Keychain with the session, never in UserDefaults.
 struct AccountCache {
+    var store: any SessionStoring
+    /// Read only to move what an earlier version saved there, then emptied.
     var defaults: UserDefaults
 
-    private let profileKey = "account.profile"
-    private let methodKey = "account.signInMethod"
+    private let legacyProfileKey = "account.profile"
+    private let legacyMethodKey = "account.signInMethod"
 
-    func profile() -> AccountProfile? {
-        guard let data = defaults.data(forKey: profileKey) else { return nil }
-        return try? JSONDecoder().decode(AccountProfile.self, from: data)
+    private struct Stored: Codable {
+        var profile: AccountProfile
+        var method: SignInMethod
     }
 
-    func method() -> SignInMethod? {
-        guard let raw = defaults.string(forKey: methodKey) else { return nil }
-        return SignInMethod(rawValue: raw)
+    private var stored: Stored? {
+        guard let json = store.cachedAccount else { return nil }
+        return try? JSONDecoder().decode(Stored.self, from: Data(json.utf8))
     }
+
+    func profile() -> AccountProfile? { stored?.profile }
+
+    func method() -> SignInMethod? { stored?.method }
 
     func save(profile: AccountProfile, method: SignInMethod) {
-        if let data = try? JSONEncoder().encode(profile) {
-            defaults.set(data, forKey: profileKey)
-        }
-        defaults.set(method.rawValue, forKey: methodKey)
+        guard let data = try? JSONEncoder().encode(Stored(profile: profile, method: method)),
+              let json = String(data: data, encoding: .utf8)
+        else { return }
+        store.saveCachedAccount(json)
     }
 
     func clear() {
-        defaults.removeObject(forKey: profileKey)
-        defaults.removeObject(forKey: methodKey)
+        store.clearCachedAccount()
+        removeLegacy()
     }
+
+    /// Moves a name and email left in UserDefaults by an earlier version into the Keychain.
+    /// The old keys are removed whether or not a session is there to use them.
+    func migrateLegacy(hasSession: Bool) {
+        defer { removeLegacy() }
+        guard hasSession, store.cachedAccount == nil,
+              let data = defaults.data(forKey: legacyProfileKey),
+              let profile = try? JSONDecoder().decode(AccountProfile.self, from: data)
+        else { return }
+        let method = defaults.string(forKey: legacyMethodKey).flatMap(SignInMethod.init(rawValue:)) ?? .email
+        save(profile: profile, method: method)
+    }
+
+    private func removeLegacy() {
+        defaults.removeObject(forKey: legacyProfileKey)
+        defaults.removeObject(forKey: legacyMethodKey)
+    }
+}
+
+struct IncomingSignIn: Equatable, Identifiable {
+    var session: ConfirmedSession
+    var method: SignInMethod
+    var email: String
+
+    var id: String { session.token }
 }
 
 /// The signed-in session. The token lives in the Keychain. Hymns, bookmarks, and packs stay on sign-out.
@@ -184,11 +279,16 @@ final class AppSession {
     private(set) var method: SignInMethod?
     var notice: String?
     var isWorking = false
+    /// A sign-in link that opened the app from outside. It waits for the reader to confirm.
+    var incoming: IncomingSignIn?
 
     private let store: any SessionStoring
     private let cache: AccountCache
+    private let defaults: UserDefaults
     private var pendingMethod: SignInMethod?
     private var activeToken: String?
+    private var isMerging = false
+    private var mergeAgain = false
 
     var isSignedIn: Bool {
         guard let token else { return false }
@@ -197,9 +297,11 @@ final class AppSession {
 
     init(store: any SessionStoring = KeychainSessionStore(), defaults: UserDefaults = .standard) {
         self.store = store
-        self.cache = AccountCache(defaults: defaults)
+        self.defaults = defaults
+        self.cache = AccountCache(store: store, defaults: defaults)
         let stored = store.token
         self.token = stored
+        cache.migrateLegacy(hasSession: stored?.isEmpty == false)
         if let stored, !stored.isEmpty {
             profile = cache.profile()
             method = cache.method()
@@ -208,8 +310,10 @@ final class AppSession {
 
     init(token: String?, store: any SessionStoring = KeychainSessionStore(), defaults: UserDefaults = .standard) {
         self.store = store
-        self.cache = AccountCache(defaults: defaults)
+        self.defaults = defaults
+        self.cache = AccountCache(store: store, defaults: defaults)
         self.token = token
+        cache.migrateLegacy(hasSession: token?.isEmpty == false)
         if let token, !token.isEmpty {
             profile = cache.profile()
             method = cache.method()
@@ -228,6 +332,7 @@ final class AppSession {
 
     /// Confirm a stored token on launch. A rejected session signs out. A network failure keeps the token.
     func restore(client: AuthClient) async {
+        await finishPendingSignOut(client: client)
         guard let token, !token.isEmpty else { return }
         do {
             let confirmed = try await client.currentSession(bearer: token)
@@ -239,25 +344,66 @@ final class AppSession {
         }
     }
 
-    func accept(_ url: URL, client: AuthClient, context: ModelContext) async {
+    /// `trusted` is true only for the callback of the browser session this app started.
+    /// A link that opened the app from outside, such as the emailed one, could come from anywhere.
+    /// It waits for the reader to confirm which Account it signs in, and changes nothing until then.
+    func accept(_ url: URL, client: AuthClient, context: ModelContext, trusted: Bool = false) async {
         guard AuthReturn.accepts(url) else {
             isWorking = false
             return
         }
         switch AuthReturn.callback(from: url) {
         case .session(let token):
-            await establish(
-                token: token,
-                method: pendingMethod ?? .email,
-                client: client,
-                context: context
-            )
+            if trusted {
+                await establish(
+                    token: token,
+                    method: pendingMethod ?? .email,
+                    client: client,
+                    context: context
+                )
+            } else {
+                await review(token: token, client: client)
+            }
         case .failure:
             isWorking = false
             notice = AccountCopy.signInFailed
         case nil:
             isWorking = false
         }
+    }
+
+    /// Looks up the Account a link would sign in. The session on this device stays as it is.
+    private func review(token: String, client: AuthClient) async {
+        if token == self.token {
+            isWorking = false
+            return
+        }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let confirmed = try await client.currentSession(bearer: token)
+            if confirmed.profile.id == profile?.id, isSignedIn { return }
+            incoming = IncomingSignIn(
+                session: confirmed,
+                method: pendingMethod ?? .email,
+                email: confirmed.profile.email
+            )
+        } catch AuthError.rejected {
+            notice = AccountCopy.signInFailed
+        } catch {
+            notice = AccountCopy.connection
+        }
+    }
+
+    func confirmIncoming(client: AuthClient, context: ModelContext) async {
+        guard let waiting = incoming else { return }
+        incoming = nil
+        await establish(token: waiting.session.token, method: waiting.method, client: client, context: context)
+    }
+
+    func declineIncoming() {
+        incoming = nil
+        isWorking = false
     }
 
     func sendMagicLink(email: String, client: AuthClient) async {
@@ -304,7 +450,18 @@ final class AppSession {
         let current = token
         signOutLocal()
         guard let current, !current.isEmpty else { return }
-        await client.signOut(bearer: current)
+        store.savePendingRevoke(current)
+        if await client.signOut(bearer: current) {
+            store.clearPendingRevoke()
+        }
+    }
+
+    /// A sign-out that could not reach the server is sent again, so the old session does not stay valid.
+    private func finishPendingSignOut(client: AuthClient) async {
+        guard let pending = store.pendingRevoke, !pending.isEmpty else { return }
+        if await client.signOut(bearer: pending) {
+            store.clearPendingRevoke()
+        }
     }
 
     private func establish(
@@ -334,7 +491,7 @@ final class AppSession {
                 notice = AccountCopy.bookmarksKept
             }
         } catch AuthError.rejected {
-            signOutLocal()
+            // The new token was never stored, so a session already on this device stays.
             notice = AccountCopy.signInFailed
         } catch {
             notice = AccountCopy.connection
@@ -349,17 +506,43 @@ final class AppSession {
         cache.save(profile: session.profile, method: method)
     }
 
+    /// Pushes this device's bookmarks, then reads the account's. One merge runs at a time.
+    /// A change that arrives while one runs is covered by one more pass.
     func mergeBookmarks(client: AuthClient, context: ModelContext) async throws {
         guard let token, !token.isEmpty else { return }
-        let hymns = try context.fetch(FetchDescriptor<HymnBookmark>())
-        let devotions = try context.fetch(FetchDescriptor<DevotionBookmark>())
-        let pushed = try await client.pushBookmarks(
-            BookmarkSync.payload(hymns: hymns, devotions: devotions),
-            bearer: token
-        )
-        try BookmarkSync.merge(pushed, into: context)
-        let remote = try await client.bookmarks(bearer: token)
-        try BookmarkSync.merge(remote, into: context)
+        if isMerging {
+            mergeAgain = true
+            return
+        }
+        isMerging = true
+        defer { isMerging = false }
+        repeat {
+            mergeAgain = false
+            try claimBookmarks(in: context)
+            try BookmarkLimit.enforce(in: context, defaults: defaults)
+            let pushed = try await client.pushBookmarks(
+                BookmarkSync.payload(try context.fetch(FetchDescriptor<Bookmark>())),
+                bearer: token
+            )
+            try BookmarkSync.merge(pushed, into: context, defaults: defaults)
+            let remote = try await client.bookmarks(bearer: token)
+            try BookmarkSync.merge(remote, into: context, defaults: defaults)
+        } while mergeAgain
+    }
+
+    /// Saved items belong to one Account. When a different Account signs in on this device, the
+    /// earlier Account's items are cleared first, so they are never sent to the new one.
+    /// Items saved while signed out, before the first sign-in, join the Account that signs in.
+    private func claimBookmarks(in context: ModelContext) throws {
+        guard let id = profile?.id, !id.isEmpty else { return }
+        if BookmarkOwner.isOtherAccount(id, defaults: defaults) {
+            for bookmark in try context.fetch(FetchDescriptor<Bookmark>()) {
+                context.delete(bookmark)
+            }
+            try context.save()
+            BookmarkRemovals.reset(defaults: defaults)
+        }
+        BookmarkOwner.set(id, defaults: defaults)
     }
 
     private func signOutLocal() {

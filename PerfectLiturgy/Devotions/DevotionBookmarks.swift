@@ -1,68 +1,20 @@
 import Foundation
-import SwiftData
-
-/// A saved prayer, litany, or other non-hymn item. Hymns stay on `HymnBookmark`.
-/// The key is `type|id`, matching the bookmark route.
-@Model
-final class DevotionBookmark {
-    @Attribute(.unique) var key: String
-    var type: String
-    var itemId: String
-    var titleSnapshot: String
-    var language: String = ""
-    var createdAt: Date
-
-    init(type: String, itemId: String, titleSnapshot: String, language: String = "", createdAt: Date) {
-        self.key = BookmarkType.key(type: type, id: itemId)
-        self.type = type
-        self.itemId = itemId
-        self.titleSnapshot = titleSnapshot
-        self.language = language
-        self.createdAt = createdAt
-    }
-}
 
 struct LocatedDevotion: Equatable, Sendable {
     var language: String
     var title: String
 }
 
+/// Finds where a saved prayer or litany is on this device.
 enum DevotionBookmarks {
-    static func toggle(
-        type: String,
-        id: String,
-        title: String,
-        language: String,
-        in context: ModelContext
-    ) throws {
-        if let bookmark = try fetch(type: type, id: id, in: context) {
-            context.delete(bookmark)
-        } else {
-            context.insert(
-                DevotionBookmark(
-                    type: type,
-                    itemId: id,
-                    titleSnapshot: title,
-                    language: language,
-                    createdAt: .now
-                )
-            )
-        }
-        try context.save()
-    }
-
-    static func remove(type: String, id: String, in context: ModelContext) throws {
-        guard let bookmark = try fetch(type: type, id: id, in: context) else { return }
-        context.delete(bookmark)
-        try context.save()
-    }
-
-    /// The stored language is the one that was open when it was saved.
-    /// A row from the account has no language, so the first installed pack that contains the id is used.
+    /// The language the reader has open now comes first, so a saved item opens where the reader is
+    /// and the language choice stays as it was. Next is the language it was saved in.
+    /// A row from the account has no language, so the installed packs are tried in order.
     static func locate(
         type: String,
         id: String,
         language: String,
+        current: String? = nil,
         installed: Set<String>,
         load: (DevotionKind, String) -> DevotionBody? = { kind, code in
             DevotionReader.load(kind, language: code)
@@ -71,7 +23,7 @@ enum DevotionBookmarks {
         guard let kind = DevotionKind(rawValue: type), kind == .prayers || kind == .litanies else {
             return nil
         }
-        for code in languages(preferred: language, type: type, installed: installed) {
+        for code in languages(preferred: language, current: current, type: type, installed: installed) {
             guard let body = load(kind, code) else { continue }
             switch body {
             case .prayers(_, let prayers):
@@ -89,18 +41,20 @@ enum DevotionBookmarks {
         return nil
     }
 
-    private static func fetch(type: String, id: String, in context: ModelContext) throws -> DevotionBookmark? {
-        let key = BookmarkType.key(type: type, id: id)
-        let descriptor = FetchDescriptor<DevotionBookmark>(predicate: #Predicate { $0.key == key })
-        return try context.fetch(descriptor).first
-    }
-
-    private static func languages(preferred: String, type: String, installed: Set<String>) -> [String] {
-        if !preferred.isEmpty {
-            return [preferred]
+    private static func languages(preferred: String, current: String?, type: String, installed: Set<String>) -> [String] {
+        var order: [String] = []
+        func add(_ code: String) {
+            if !code.isEmpty, !order.contains(code) { order.append(code) }
         }
         let prefix = "\(type)-"
-        return installed.compactMap { pack -> String? in
+        if let current, installed.contains(prefix + current) {
+            add(current)
+        }
+        if !preferred.isEmpty {
+            add(preferred)
+            return order
+        }
+        let others = installed.compactMap { pack -> String? in
             guard pack.hasPrefix(prefix) else { return nil }
             let code = String(pack.dropFirst(prefix.count))
             return code.isEmpty ? nil : code
@@ -110,5 +64,7 @@ enum DevotionBookmarks {
             if rhs == PackLanguages.defaultCode { return false }
             return lhs < rhs
         }
+        others.forEach(add)
+        return order
     }
 }

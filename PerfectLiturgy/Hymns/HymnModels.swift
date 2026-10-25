@@ -94,16 +94,22 @@ nonisolated final class HymnSectionRecord {
     }
 }
 
+/// A saved hymn, prayer, or litany. One row per item, in the shape the account sends:
+/// `type`, `id`, `titleSnapshot`, `createdAt`. The key is `type|id`, which is also how the
+/// removal list names an item. `language` stays on the device so a removed pack can still be named.
 @Model
-final class HymnBookmark {
-    @Attribute(.unique) var hymnId: String
+final class Bookmark {
+    @Attribute(.unique) var key: String
+    var type: String
+    var itemId: String
     var titleSnapshot: String
-    /// Language code, kept so a removed pack can still be named after the hymn is gone.
     var language: String = ""
     var createdAt: Date
 
-    init(hymnId: String, titleSnapshot: String, language: String = "", createdAt: Date) {
-        self.hymnId = hymnId
+    init(type: String, itemId: String, titleSnapshot: String, language: String = "", createdAt: Date) {
+        self.key = BookmarkType.key(type: type, id: itemId)
+        self.type = type
+        self.itemId = itemId
         self.titleSnapshot = titleSnapshot
         self.language = language
         self.createdAt = createdAt

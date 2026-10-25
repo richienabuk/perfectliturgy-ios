@@ -61,7 +61,7 @@ Import bundled hymns into SwiftData once. A second launch does not insert the sa
 
 Search key is the accent-folded lowercase join of title, first line, and lyrics. Folding strips combining marks. Display text stays as stored.
 
-**Bookmark.** `type` is `hymns`, `prayers`, or `litanies`. `id` is that item's id. `titleSnapshot` and `createdAt` are stored with it. The device also keeps the language code. Newest first. `PUT` and `GET /v1/bookmarks` send `type`, `id`, `titleSnapshot`, and `createdAt` in milliseconds.
+**Bookmark.** One table for every type, in the shape the account sends. `type` is `hymns`, `prayers`, or `litanies`. `id` is that item's id. `titleSnapshot` and `createdAt` are stored with it. The key is `type|id`. The device also keeps the language code. A bookmark stays when its language pack is removed. Its row is greyed and does not open. Newest first. The device keeps at most 50 saved items across hymns, prayers, and litanies. Saving a 51st drops the oldest one (first in, first out), and a dropped item is not brought back by sync. `PUT` and `GET /v1/bookmarks` send `type`, `id`, `titleSnapshot`, and `createdAt` in milliseconds.
 
 **Verse.** Identity is translation, book, chapter, and verse. Store the text once. A tombstone deletes that key. Translation id is the pack id without the `readings-` prefix.
 
@@ -73,7 +73,7 @@ Search key is the accent-folded lowercase join of title, first line, and lyrics.
 
 **Visits.** Opening a hymn records the last 8, newest first. No screen lists them yet.
 
-**Sign-out** clears the Keychain token and stops gated sync. Hymns, verses, devotion files, bookmarks, and preferences stay.
+**Account name and email** are kept in the Keychain with the session token, never in UserDefaults. **Sign-out** clears the Keychain token and that name and email, and stops gated sync. Hymns, verses, devotion files, bookmarks, and preferences stay.
 
 ---
 
@@ -222,7 +222,7 @@ When a signed-out person has an installed live pack whose catalog revision diffe
 
 ### Saved
 
-Heading "Saved". Support "Keep what you want close at hand." Empty and signed out: "Save a hymn, a prayer, or a litany from its page. It stays on this device and opens here." Empty and signed in: "Save a hymn, a prayer, or a litany from its page. It syncs with your Account when you're online." A hymn row shows the title, then the catalogue and first Mass part when that language is installed. A prayer or litany row shows the title and the pack name when that language is installed. A missing item keeps the title snapshot, says "Not on this device" or that the pack was removed, and does not open. The row can remove the bookmark.
+Heading "Saved". Support "Keep what you want close at hand." Empty and signed out: "Save a hymn, a prayer, or a litany from its page. It stays on this device and opens here." Empty and signed in: "Save a hymn, a prayer, or a litany from its page. It syncs with your Account when you're online." Items are grouped under Hymns, Prayers, and Litanies, in that order, newest first inside each group. A group with no items is not shown. A hymn row shows the title, then the catalogue and first Mass part when that language is installed. A prayer or litany row shows the title and the pack name when that language is installed. A missing item keeps the title snapshot, says "Not on this device" or that the pack was removed, and does not open. The row can remove the bookmark.
 
 ### Devotions
 

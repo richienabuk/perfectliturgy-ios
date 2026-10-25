@@ -1,5 +1,17 @@
 import Foundation
 
+/// Pack ids come from the server and become URL paths and file names.
+/// Letters, digits, `-` and `_` only, so an id can never name another folder.
+nonisolated enum PackID {
+    static func isValid(_ id: String) -> Bool {
+        guard !id.isEmpty, id.utf8.count <= 64 else { return false }
+        return id.utf8.allSatisfy { byte in
+            (byte >= 97 && byte <= 122) || (byte >= 65 && byte <= 90) || (byte >= 48 && byte <= 57)
+                || byte == 45 || byte == 95
+        }
+    }
+}
+
 nonisolated struct PackRecord: Codable, Equatable, Sendable, Identifiable {
     var packId: String
     var type: String
@@ -235,7 +247,9 @@ nonisolated enum PackFiles {
     static let revisionsKey = "packRevisions"
 
     static func file(for packId: String, root: URL) -> URL {
-        root.appending(path: "\(packId).json")
+        // An id that is not safe never reaches here from the app. This keeps a stray one inside the folder.
+        let name = PackID.isValid(packId) ? packId : "invalid-pack"
+        return root.appending(path: "\(name).json")
     }
 
     static func catalogFile(root: URL) -> URL {
@@ -269,11 +283,13 @@ nonisolated enum PackFiles {
     static func loadCatalog(root: URL) -> StoredCatalog? {
         let url = catalogFile(root: root)
         guard let data = try? Data(contentsOf: url) else { return nil }
-        if let stored = try? decoder.decode(StoredCatalog.self, from: data), !stored.packs.isEmpty {
-            return stored
+        if var stored = try? decoder.decode(StoredCatalog.self, from: data) {
+            stored.packs = stored.packs.filter { PackID.isValid($0.packId) }
+            if !stored.packs.isEmpty { return stored }
         }
-        if let packs = try? decoder.decode([PackRecord].self, from: data), !packs.isEmpty {
-            return StoredCatalog(packs: packs, updatedAt: nil)
+        if let packs = try? decoder.decode([PackRecord].self, from: data) {
+            let safe = packs.filter { PackID.isValid($0.packId) }
+            if !safe.isEmpty { return StoredCatalog(packs: safe, updatedAt: nil) }
         }
         return nil
     }
@@ -295,8 +311,13 @@ nonisolated enum PackFiles {
         defaults.set(stored, forKey: revisionsKey)
     }
 
+    /// Downloaded packs can be downloaded again, and some are gated. They stay out of device backups.
     static func ensureFolder(_ root: URL) throws {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        var folder = root
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? folder.setResourceValues(values)
     }
 
     private static var encoder: JSONEncoder {

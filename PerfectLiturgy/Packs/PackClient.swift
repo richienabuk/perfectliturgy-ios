@@ -26,12 +26,15 @@ struct PackClient {
         var page = 1
         var collected: [PackRecord] = []
         var seen: Set<String> = []
+        var received = 0
         while page <= 30 {
             let envelope = try await fetchPage(page)
-            for pack in envelope.data where seen.insert(pack.packId).inserted {
+            received += envelope.data.count
+            for pack in envelope.data where PackID.isValid(pack.packId) && seen.insert(pack.packId).inserted {
                 collected.append(pack)
             }
-            if envelope.data.isEmpty || collected.count >= envelope.total {
+            // `total` counts every row the server has, including any this app refuses.
+            if envelope.data.isEmpty || received >= envelope.total {
                 break
             }
             page += 1
@@ -40,6 +43,7 @@ struct PackClient {
     }
 
     func download(packId: String) async throws -> Data {
+        guard PackID.isValid(packId) else { throw PackHTTPError.status(404) }
         let url = apiBase
             .appending(path: "v1")
             .appending(path: "packs")
@@ -49,6 +53,7 @@ struct PackClient {
     }
 
     func sync(packId: String, since: String) async throws -> Data {
+        guard PackID.isValid(packId) else { throw PackHTTPError.status(404) }
         let base = apiBase
             .appending(path: "v1")
             .appending(path: "packs")

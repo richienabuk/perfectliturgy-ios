@@ -7,8 +7,7 @@ struct TodayView: View {
     @Environment(LanguageSelection.self) private var selection
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
-    @Query(sort: \HymnBookmark.createdAt, order: .reverse) private var bookmarks: [HymnBookmark]
-    @Query(sort: \DevotionBookmark.createdAt, order: .reverse) private var devotions: [DevotionBookmark]
+    @Query(sort: \Bookmark.createdAt, order: .reverse) private var bookmarks: [Bookmark]
     @Environment(\.modelContext) private var modelContext
     @State private var savedRows: [SavedRow] = []
 
@@ -37,9 +36,10 @@ struct TodayView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
         .task { reloadSaved() }
-        .onChange(of: bookmarks.map(\.hymnId)) { _, _ in reloadSaved() }
-        .onChange(of: devotions.map(\.key)) { _, _ in reloadSaved() }
+        .onChange(of: bookmarks.map(\.key)) { _, _ in reloadSaved() }
         .onChange(of: packs.ids) { _, _ in reloadSaved() }
+        .onChange(of: selection.code(for: .prayers)) { _, _ in reloadSaved() }
+        .onChange(of: selection.code(for: .litanies)) { _, _ in reloadSaved() }
         .onReceive(NotificationCenter.default.publisher(for: .hymnStoreDidChange)) { _ in
             reloadSaved()
         }
@@ -187,14 +187,14 @@ struct TodayView: View {
 
     private func reloadSaved() {
         savedRows = SavedRows.rows(
-            hymns: bookmarks,
-            devotions: devotions,
+            bookmarks,
             hymnLookup: { HymnImporter.record(id: $0, in: modelContext) },
             located: { bookmark in
                 DevotionBookmarks.locate(
                     type: bookmark.type,
                     id: bookmark.itemId,
                     language: bookmark.language,
+                    current: selection.openCode(forBookmarkType: bookmark.type),
                     installed: packs.ids
                 )
             },

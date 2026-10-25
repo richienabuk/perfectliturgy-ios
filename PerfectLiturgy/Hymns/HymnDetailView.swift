@@ -20,7 +20,7 @@ struct HymnDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var page: HymnPage?
     private let packStore = PackCatalogStore.shared
-    @Query private var bookmarks: [HymnBookmark]
+    @Query private var bookmarks: [Bookmark]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -59,9 +59,13 @@ struct HymnDetailView: View {
     private func recordVisitAfterTransition() {
         let hymnID = id
         let context = modelContext
+        // The store must outlive the wait, or the write lands on a store that is gone.
+        let container = modelContext.container
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(350))
-            try? HymnImporter.recordVisit(hymnID: hymnID, in: context)
+            withExtendedLifetime(container) {
+                try? HymnImporter.recordVisit(hymnID: hymnID, in: context)
+            }
         }
     }
 
@@ -77,7 +81,7 @@ struct HymnDetailView: View {
     }
 
     private func detail(_ hymn: HymnPage) -> some View {
-        let saved = bookmarks.contains { $0.hymnId == hymn.id }
+        let saved = Bookmarks.isSaved(type: BookmarkType.hymns, id: hymn.id, in: bookmarks)
         let wide = !showsChrome
         let tablet = isWide && showsChrome
         let titleSize = max(readingScale.size(for: .partTitle), wide ? 40 : 34)
@@ -237,7 +241,13 @@ struct HymnDetailView: View {
 
     private func toggleSaved() {
         guard let hymn = HymnImporter.record(id: id, in: modelContext) else { return }
-        try? HymnImporter.toggleBookmark(hymn, in: modelContext)
+        try? Bookmarks.toggle(
+            type: BookmarkType.hymns,
+            id: hymn.id,
+            title: hymn.title,
+            language: hymn.language,
+            in: modelContext
+        )
     }
 
     private var missing: some View {

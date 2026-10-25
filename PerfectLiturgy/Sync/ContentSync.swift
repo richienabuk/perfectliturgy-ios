@@ -18,6 +18,7 @@ enum SyncCopy {
     static let current = "Hymns and readings are up to date."
     static let connection = "Check the connection and try again."
     static let signIn = "Sign in to update hymns and readings."
+    static let bookmarksNotSent = "Saved items did not sync. They stay on this device."
 }
 
 /// Wi-Fi, or a cellular path that is not marked expensive or constrained.

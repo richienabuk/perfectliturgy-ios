@@ -10,7 +10,7 @@ struct LitaniesView: View {
     @Environment(\.splitsColumns) private var splitsColumns
 
     @Environment(\.modelContext) private var modelContext
-    @Query private var saved: [DevotionBookmark]
+    @Query private var saved: [Bookmark]
 
     @State private var showsLanguages = false
     @State private var openDownloads = false
@@ -144,7 +144,7 @@ struct LitaniesView: View {
 
     private func toggle(_ litany: Litany) {
         guard let language = choice.active else { return }
-        try? DevotionBookmarks.toggle(
+        try? Bookmarks.toggle(
             type: BookmarkType.litanies,
             id: litany.id,
             title: litany.title,
@@ -179,7 +179,7 @@ struct LitanyView: View {
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
     @Environment(\.modelContext) private var modelContext
-    @Query private var saved: [DevotionBookmark]
+    @Query private var saved: [Bookmark]
 
     private var choice: DevotionLanguageChoice {
         DevotionLanguageChoice(.litanies, requested: selection.code(for: .litanies), installed: packs.languages(for: .litanies), catalog: catalog.packs)
@@ -233,7 +233,7 @@ struct LitanyView: View {
                         identifier: "litany.save.\(litany.id)"
                     ) {
                         guard let language = choice.active else { return }
-                        try? DevotionBookmarks.toggle(
+                        try? Bookmarks.toggle(
                             type: BookmarkType.litanies,
                             id: litany.id,
                             title: litany.title,

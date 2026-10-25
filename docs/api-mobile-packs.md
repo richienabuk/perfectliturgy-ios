@@ -603,7 +603,7 @@ Translation key for local verse storage = `pack_id` without the `readings-` pref
 
 ### `PUT /v1/bookmarks`
 
-Auth: **required**. Merge local saved hymns, prayers, and litanies after sign-in.
+Auth: **required**. Merge local saved hymns, prayers, and litanies after sign-in. The app sends at most 50 rows. It keeps the 50 newest and drops the oldest on the device. The server has no delete route, so `GET` can return older rows. The app does not take them back.
 
 **Body**
 

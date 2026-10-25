@@ -44,8 +44,8 @@ import UIKit
     try saveTestBookmark(at: url)
 
     let container = try HymnStore.make(at: url)
-    let bookmarks = try container.mainContext.fetch(FetchDescriptor<HymnBookmark>())
-    #expect(bookmarks.map(\.hymnId) == ["test-kept"])
+    let bookmarks = try container.mainContext.fetch(FetchDescriptor<Bookmark>())
+    #expect(bookmarks.map(\.itemId) == ["test-kept"])
     #expect(bookmarks.map(\.titleSnapshot) == ["Test hymn one"])
     #expect(bookmarks.map(\.language) == ["en"])
 }
@@ -54,10 +54,10 @@ import UIKit
     let container = try HymnStore.make(inMemory: true)
     let context = container.mainContext
     let hymn = try insertHymn(id: "test-en-1", language: "en", title: "Test hymn one", massParts: ["entrance", "communion"], in: context)
-    try HymnImporter.toggleBookmark(hymn, in: context)
-    let bookmark = try #require(try context.fetch(FetchDescriptor<HymnBookmark>()).first)
+    try toggleHymnBookmark(hymn, in: context)
+    let bookmark = try #require(try context.fetch(FetchDescriptor<Bookmark>()).first)
 
-    let open = SavedRows.row(bookmark: bookmark, hymn: hymn, installed: Set(ContentPack.bundledIDs))
+    let open = SavedRows.hymnRow(bookmark: bookmark, hymn: hymn, installed: Set(ContentPack.bundledIDs))
     #expect(open.opens)
     #expect(open.title == "Test hymn one")
     #expect(open.detail == "English Hymns · Entrance")
@@ -65,17 +65,17 @@ import UIKit
     hymn.title = "A later title"
     var installed = Set(ContentPack.bundledIDs)
     installed.remove(ContentPack.hymnID(for: "en"))
-    let removed = SavedRows.row(bookmark: bookmark, hymn: hymn, installed: installed)
+    let removed = SavedRows.hymnRow(bookmark: bookmark, hymn: hymn, installed: installed)
     #expect(!removed.opens)
     #expect(removed.title == "Test hymn one")
     #expect(removed.detail == "Hymn pack removed from this device")
 
-    let gone = SavedRows.row(bookmark: bookmark, hymn: nil, installed: installed)
+    let gone = SavedRows.hymnRow(bookmark: bookmark, hymn: nil, installed: installed)
     #expect(!gone.opens)
     #expect(gone.title == "Test hymn one")
     #expect(gone.detail == "Hymn pack removed from this device")
 
-    let missing = SavedRows.row(bookmark: bookmark, hymn: nil, installed: Set(ContentPack.bundledIDs))
+    let missing = SavedRows.hymnRow(bookmark: bookmark, hymn: nil, installed: Set(ContentPack.bundledIDs))
     #expect(!missing.opens)
     #expect(missing.detail == "Not on this device")
 
@@ -83,8 +83,8 @@ import UIKit
     #expect(SavedRows.emptyNote(signedIn: true) == "Save a hymn, a prayer, or a litany from its page. It syncs with your Account when you're online.")
     #expect(SavedRows.detail(language: "en", massParts: []) == "English Hymns")
 
-    try HymnImporter.removeBookmark(hymnID: hymn.id, in: context)
-    #expect(try context.fetch(FetchDescriptor<HymnBookmark>()).isEmpty)
+    try Bookmarks.remove(type: BookmarkType.hymns, id: hymn.id, in: context)
+    #expect(try context.fetch(FetchDescriptor<Bookmark>()).isEmpty)
 }
 
 @Test func `removing a hymn pack is remembered`() throws {
@@ -116,8 +116,7 @@ import UIKit
     ]
     for (id, title, offset) in hymns {
         context.insert(
-            HymnBookmark(
-                hymnId: id,
+            Bookmark(type: BookmarkType.hymns, itemId: id,
                 titleSnapshot: title,
                 language: "en",
                 createdAt: start.addingTimeInterval(TimeInterval(offset))
@@ -125,7 +124,7 @@ import UIKit
         )
     }
     context.insert(
-        DevotionBookmark(
+        Bookmark(
             type: BookmarkType.prayers,
             itemId: "prayer-one",
             titleSnapshot: "Test prayer one",
@@ -134,7 +133,7 @@ import UIKit
         )
     )
     context.insert(
-        DevotionBookmark(
+        Bookmark(
             type: BookmarkType.prayers,
             itemId: "prayer-two",
             titleSnapshot: "Test prayer two",
@@ -143,7 +142,7 @@ import UIKit
         )
     )
     context.insert(
-        DevotionBookmark(
+        Bookmark(
             type: BookmarkType.litanies,
             itemId: "litany-one",
             titleSnapshot: "Test litany one",
@@ -153,11 +152,8 @@ import UIKit
     )
     try context.save()
 
-    let storedHymns = try context.fetch(FetchDescriptor<HymnBookmark>())
-    let storedDevotions = try context.fetch(FetchDescriptor<DevotionBookmark>())
     let rows = SavedRows.rows(
-        hymns: storedHymns,
-        devotions: storedDevotions,
+        try context.fetch(FetchDescriptor<Bookmark>()),
         hymnLookup: { _ in nil },
         located: { _ in nil },
         installed: [],
@@ -172,6 +168,56 @@ import UIKit
     ])
 }
 
+@Test func `saved groups hymns, prayers, and litanies and keeps newest first in each`() throws {
+    let container = try HymnStore.make(inMemory: true)
+    let context = container.mainContext
+    defer { withExtendedLifetime(container) {} }
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+    let items: [(String, String, String, Double)] = [
+        (BookmarkType.litanies, "litany-one", "Test litany one", 50),
+        (BookmarkType.hymns, "hymn-one", "Test hymn one", 10),
+        (BookmarkType.prayers, "prayer-one", "Test prayer one", 40),
+        (BookmarkType.hymns, "hymn-two", "Test hymn two", 30),
+        (BookmarkType.prayers, "prayer-two", "Test prayer two", 20),
+    ]
+    for (type, id, title, offset) in items {
+        context.insert(Bookmark(type: type, itemId: id, titleSnapshot: title, language: "en", createdAt: start.addingTimeInterval(offset)))
+    }
+    try context.save()
+
+    let rows = SavedRows.rows(
+        try context.fetch(FetchDescriptor<Bookmark>()),
+        hymnLookup: { _ in nil },
+        located: { _ in nil },
+        installed: []
+    )
+    let groups = SavedRows.groups(rows)
+    #expect(groups.map(\.title) == ["Hymns", "Prayers", "Litanies"])
+    #expect(groups[0].rows.map(\.title) == ["Test hymn two", "Test hymn one"])
+    #expect(groups[1].rows.map(\.title) == ["Test prayer one", "Test prayer two"])
+    #expect(groups[2].rows.map(\.title) == ["Test litany one"])
+}
+
+@Test func `an empty type has no group`() {
+    #expect(SavedRows.groups([]).isEmpty)
+}
+
+@Test func `a saved hymn whose language pack is removed stays and does not open`() throws {
+    let container = try HymnStore.make(inMemory: true)
+    let context = container.mainContext
+    defer { withExtendedLifetime(container) {} }
+    let hymn = try insertHymn(id: "test-la-1", language: "la", title: "Test hymn one", massParts: [], in: context)
+    try toggleHymnBookmark(hymn, in: context)
+    var installed = Set(ContentPack.bundledIDs)
+    installed.remove(ContentPack.hymnID(for: "la"))
+    let stored = try #require(try context.fetch(FetchDescriptor<Bookmark>()).first)
+    let row = SavedRows.hymnRow(bookmark: stored, hymn: nil, installed: installed)
+    #expect(!row.opens)
+    #expect(row.route == nil)
+    #expect(row.title == "Test hymn one")
+    #expect(try context.fetch(FetchDescriptor<Bookmark>()).count == 1)
+}
+
 @Test func `a saved prayer and litany stay on the device and name their pack`() throws {
     let folder = FileManager.default.temporaryDirectory
         .appending(path: "pl-devotion-bookmarks-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -182,14 +228,14 @@ import UIKit
 
     let container = try HymnStore.make(at: url)
     let context = container.mainContext
-    let stored = try context.fetch(FetchDescriptor<DevotionBookmark>()).sorted { $0.key < $1.key }
+    let stored = try context.fetch(FetchDescriptor<Bookmark>()).sorted { $0.key < $1.key }
     #expect(stored.map(\.type) == ["litanies", "prayers"])
     #expect(stored.map(\.itemId) == ["saints", "test-one"])
     #expect(stored.map(\.titleSnapshot) == ["Test litany one", "Test prayer one"])
     #expect(stored.map(\.language) == ["la", "en"])
 
     let prayer = try #require(stored.first { $0.itemId == "test-one" })
-    let open = SavedRows.row(
+    let open = SavedRows.devotionRow(
         bookmark: prayer,
         located: LocatedDevotion(language: "en", title: "Test prayer one"),
         installed: Set(ContentPack.bundledIDs)
@@ -201,7 +247,7 @@ import UIKit
 
     var removedPacks = Set(ContentPack.bundledIDs)
     removedPacks.remove("prayers-en")
-    let removed = SavedRows.row(bookmark: prayer, located: nil, installed: removedPacks)
+    let removed = SavedRows.devotionRow(bookmark: prayer, located: nil, installed: removedPacks)
     #expect(!removed.opens)
     #expect(removed.title == "Test prayer one")
     #expect(removed.detail == "Prayer pack removed from this device")
@@ -209,7 +255,7 @@ import UIKit
     let litany = try #require(stored.first { $0.itemId == "saints" })
     var removedLitany = Set(ContentPack.bundledIDs)
     removedLitany.remove("litanies-la")
-    let closedLitany = SavedRows.row(bookmark: litany, located: nil, installed: removedLitany)
+    let closedLitany = SavedRows.devotionRow(bookmark: litany, located: nil, installed: removedLitany)
     #expect(!closedLitany.opens)
     #expect(closedLitany.detail == "Litany pack removed from this device")
 
@@ -237,14 +283,14 @@ import UIKit
     )
     #expect(found == LocatedDevotion(language: "en", title: "Test prayer one"))
 
-    try DevotionBookmarks.toggle(
+    try Bookmarks.toggle(
         type: BookmarkType.prayers,
         id: "test-one",
         title: "Test prayer one",
         language: "en",
         in: context
     )
-    let left = try context.fetch(FetchDescriptor<DevotionBookmark>())
+    let left = try context.fetch(FetchDescriptor<Bookmark>())
     #expect(left.map(\.itemId) == ["saints"])
 }
 
@@ -272,8 +318,8 @@ import UIKit
     let context = container.mainContext
     let english = try insertHymn(id: "test-en-1", language: "en", title: "Test hymn one", massParts: ["entrance"], in: context)
     let latin = try insertHymn(id: "test-la-1", language: "la", title: "Test hymn one", massParts: ["recessional"], in: context)
-    try HymnImporter.toggleBookmark(english, in: context)
-    try HymnImporter.toggleBookmark(latin, in: context)
+    try toggleHymnBookmark(english, in: context)
+    try toggleHymnBookmark(latin, in: context)
 
     let suite = "saved-ui-\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
@@ -282,12 +328,12 @@ import UIKit
     let packs = InstalledPacks(defaults: defaults)
     packs.remove("hymns-en")
 
-    let rows = try context.fetch(FetchDescriptor<HymnBookmark>()).map { bookmark in
-        let hymn = [english, latin].first { $0.id == bookmark.hymnId }
-        return SavedRows.row(bookmark: bookmark, hymn: hymn, installed: packs.ids)
+    let rows = try context.fetch(FetchDescriptor<Bookmark>()).map { bookmark in
+        let hymn = [english, latin].first { $0.id == bookmark.itemId }
+        return SavedRows.hymnRow(bookmark: bookmark, hymn: hymn, installed: packs.ids)
     }
-    let closed = try #require(rows.first { $0.id == "test-en-1" })
-    let open = try #require(rows.first { $0.id == "test-la-1" })
+    let closed = try #require(rows.first { $0.itemId == "test-en-1" })
+    let open = try #require(rows.first { $0.itemId == "test-la-1" })
     #expect(!closed.opens)
     #expect(closed.title == "Test hymn one")
     #expect(closed.detail == "Hymn pack removed from this device")
@@ -331,14 +377,14 @@ import UIKit
 private func saveDevotionBookmarks(at url: URL) throws {
     let container = try HymnStore.make(at: url)
     let context = container.mainContext
-    try DevotionBookmarks.toggle(
+    try Bookmarks.toggle(
         type: BookmarkType.prayers,
         id: "test-one",
         title: "Test prayer one",
         language: "en",
         in: context
     )
-    try DevotionBookmarks.toggle(
+    try Bookmarks.toggle(
         type: BookmarkType.litanies,
         id: "saints",
         title: "Test litany one",
@@ -360,11 +406,23 @@ private func saveTestBookmark(at url: URL) throws {
         searchKey: "test hymn one"
     )
     context.insert(hymn)
-    try HymnImporter.toggleBookmark(hymn, in: context)
+    try toggleHymnBookmark(hymn, in: context)
+}
+
+/// Saves or unsaves a hymn the way the hymn screens do.
+func toggleHymnBookmark(_ hymn: HymnRecord, in context: ModelContext, defaults: UserDefaults = .standard) throws {
+    try Bookmarks.toggle(
+        type: BookmarkType.hymns,
+        id: hymn.id,
+        title: hymn.title,
+        language: hymn.language,
+        in: context,
+        defaults: defaults
+    )
 }
 
 @discardableResult
-private func insertHymn(
+func insertHymn(
     id: String,
     language: String,
     title: String,

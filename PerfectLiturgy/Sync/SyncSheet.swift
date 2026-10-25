@@ -19,6 +19,20 @@ struct SyncSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("sync.message")
             Spacer(minLength: 0)
+            if sync.phase == .working || sync.phase == .idle {
+                Button {
+                    sync.cancel()
+                    sync.showsSheet = false
+                } label: {
+                    Text("Cancel")
+                        .font(AppFont.interface(size: 16, weight: .semibold))
+                        .foregroundStyle(palette.foreground.color)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: ControlMetrics.minimumHeight)
+                }
+                .buttonStyle(PressScaleButtonStyle())
+                .accessibilityIdentifier("sync.cancel")
+            }
             Button {
                 sync.showsSheet = false
             } label: {
@@ -49,7 +63,7 @@ struct SyncSheet: View {
         case .finished(let report):
             switch report.outcome {
             case .current:
-                report.bookmarksKept ? "\(SyncCopy.current) \(AccountCopy.bookmarksKept)" : SyncCopy.current
+                report.bookmarksKept ? "\(SyncCopy.current) \(SyncCopy.bookmarksNotSent)" : SyncCopy.current
             case .needsSignIn:
                 SyncCopy.signIn
             case .connection:

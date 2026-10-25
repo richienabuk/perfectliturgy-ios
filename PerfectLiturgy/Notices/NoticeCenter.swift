@@ -8,12 +8,17 @@ enum DeviceMemory {
         guard !token.isEmpty else { return false }
         let storedToken = defaults.string(forKey: tokenKey) ?? ""
         let storedAccount = defaults.string(forKey: accountKey) ?? ""
-        return storedToken != token || storedAccount != accountID
+        return storedToken != token || storedAccount != fingerprint(accountID)
     }
 
     static func remember(token: String, accountID: String, defaults: UserDefaults) {
         defaults.set(token, forKey: tokenKey)
-        defaults.set(accountID, forKey: accountKey)
+        defaults.set(fingerprint(accountID), forKey: accountKey)
+    }
+
+    /// Signed out is the empty string. An account is kept as a one-way fingerprint.
+    private static func fingerprint(_ accountID: String) -> String {
+        accountID.isEmpty ? "" : AccountFingerprint.of(accountID)
     }
 }
 

@@ -15,9 +15,9 @@ struct HymnMediaSection: View {
     @State private var audioNote: String?
 
     var body: some View {
-        let audios = audioURLs.compactMap(URL.init(string:))
-        let videos = videoURLs.compactMap(URL.init(string:))
-        let sheets = sheetMusicURLs.compactMap(URL.init(string:))
+        let audios = audioURLs.compactMap(HymnMediaURL.safe)
+        let videos = videoURLs.compactMap(HymnMediaURL.safe)
+        let sheets = sheetMusicURLs.compactMap(HymnMediaURL.safe)
         if audios.isEmpty && videos.isEmpty && sheets.isEmpty {
             EmptyView()
         } else {
@@ -111,14 +111,33 @@ struct HymnMediaSection: View {
     }
 }
 
+/// Media links come from a pack. Only secure web links open, whatever the pack says.
+enum HymnMediaURL {
+    static func safe(_ raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed),
+              url.scheme?.lowercased() == "https",
+              let host = url.host, !host.isEmpty
+        else { return nil }
+        return url
+    }
+
+    /// The host is one of the names, or a subdomain of one. `notyoutube.com` is neither.
+    static func host(of url: URL, isOneOf names: [String]) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        return names.contains { host == $0 || host.hasSuffix("." + $0) }
+    }
+}
+
 enum HymnVideo {
+    private static let youtubeHosts = ["youtube.com", "youtube-nocookie.com"]
+
     static func embedURL(for url: URL) -> URL? {
-        let host = url.host?.lowercased() ?? ""
-        if host.contains("youtu.be") || host.contains("youtube.com") {
+        if HymnMediaURL.host(of: url, isOneOf: ["youtu.be"] + youtubeHosts) {
             guard let identifier = youtubeID(from: url) else { return nil }
             return URL(string: "https://www.youtube.com/embed/\(identifier)")
         }
-        if host.contains("vimeo.com") {
+        if HymnMediaURL.host(of: url, isOneOf: ["vimeo.com"]) {
             guard let identifier = url.pathComponents.last(where: { Int($0) != nil }) else { return nil }
             return URL(string: "https://player.vimeo.com/video/\(identifier)")
         }
@@ -126,20 +145,33 @@ enum HymnVideo {
     }
 
     static func youtubeID(from url: URL) -> String? {
-        let host = url.host?.lowercased() ?? ""
-        if host.contains("youtu.be") {
-            let identifier = url.pathComponents.dropFirst().first
-            return identifier?.isEmpty == false ? identifier : nil
+        let candidate: String?
+        if HymnMediaURL.host(of: url, isOneOf: ["youtu.be"]) {
+            candidate = url.pathComponents.dropFirst().first
+        } else if HymnMediaURL.host(of: url, isOneOf: youtubeHosts) {
+            if let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+                .first(where: { $0.name == "v" })?.value, !query.isEmpty {
+                candidate = query
+            } else if let embed = url.pathComponents.firstIndex(of: "embed"),
+                      embed + 1 < url.pathComponents.count {
+                candidate = url.pathComponents[embed + 1]
+            } else {
+                candidate = nil
+            }
+        } else {
+            candidate = nil
         }
-        if let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
-            .first(where: { $0.name == "v" })?.value, !query.isEmpty {
-            return query
+        guard let candidate, isVideoID(candidate) else { return nil }
+        return candidate
+    }
+
+    /// Letters, digits, `-` and `_`. Nothing that could add a path or a query to the embed link.
+    static func isVideoID(_ value: String) -> Bool {
+        guard !value.isEmpty, value.utf8.count <= 32 else { return false }
+        return value.utf8.allSatisfy { byte in
+            (byte >= 97 && byte <= 122) || (byte >= 65 && byte <= 90) || (byte >= 48 && byte <= 57)
+                || byte == 45 || byte == 95
         }
-        if let embed = url.pathComponents.firstIndex(of: "embed"),
-           embed + 1 < url.pathComponents.count {
-            return url.pathComponents[embed + 1]
-        }
-        return nil
     }
 }
 
@@ -178,8 +210,9 @@ private struct HymnPDFView: View {
         }
         .task {
             do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let document = PDFDocument(data: data) {
+                let (data, response) = try await URLSession.shared.data(from: url)
+                let ok = (response as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
+                if ok, data.count <= 25_000_000, let document = PDFDocument(data: data) {
                     self.document = document
                 } else {
                     failed = true

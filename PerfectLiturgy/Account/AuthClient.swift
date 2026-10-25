@@ -92,7 +92,8 @@ struct AuthClient {
     func currentSession(bearer: String) async throws -> ConfirmedSession {
         let url = authBase.appending(path: "api").appending(path: "auth").appending(path: "get-session")
         let (data, http) = try await send(authorized(url, bearer: bearer))
-        if http.statusCode == 401 || http.statusCode == 403 { throw AuthError.rejected }
+        // Only 401 means the session is gone. A 403 can come from a proxy or firewall, and must not sign anyone out.
+        if http.statusCode == 401 { throw AuthError.rejected }
         guard (200..<300).contains(http.statusCode) else { throw AuthError.transport }
         let body = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
         if body == nil || body?.isEmpty == true || body == "null" { throw AuthError.rejected }
@@ -156,12 +157,15 @@ struct AuthClient {
         throw AuthError.appleUnavailable
     }
 
-    func signOut(bearer: String) async {
+    /// True when the server ended the session, or no longer knows it.
+    @discardableResult
+    func signOut(bearer: String) async -> Bool {
         let url = authBase.appending(path: "api").appending(path: "auth").appending(path: "sign-out")
         let body = Data("{}".utf8)
         var request = authorized(url, bearer: bearer, method: "POST", body: body)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        _ = try? await send(request)
+        guard let (_, http) = try? await send(request) else { return false }
+        return (200..<300).contains(http.statusCode) || http.statusCode == 401
     }
 
     func pushBookmarks(_ rows: [BookmarkDraft], bearer: String) async throws -> [BookmarkDraft] {
@@ -318,64 +322,47 @@ private struct BookmarkPage {
 }
 
 enum BookmarkSync {
-    static func payload(hymns: [HymnBookmark], devotions: [DevotionBookmark]) -> [BookmarkDraft] {
-        let hymnRows = hymns.map { bookmark in
-            BookmarkDraft(
-                type: BookmarkType.hymns,
-                id: bookmark.hymnId,
-                titleSnapshot: bookmark.titleSnapshot,
-                createdAt: milliseconds(bookmark.createdAt)
-            )
-        }
-        let devotionRows = devotions.map { bookmark in
-            BookmarkDraft(
-                type: bookmark.type,
-                id: bookmark.itemId,
-                titleSnapshot: bookmark.titleSnapshot,
-                createdAt: milliseconds(bookmark.createdAt)
-            )
-        }
-        return hymnRows + devotionRows
+    static func payload(_ bookmarks: [Bookmark]) -> [BookmarkDraft] {
+        bookmarks.map(Bookmarks.draft(of:))
+    }
+
+    /// Tells a signed-in app to push a change. Posted after a bookmark is saved or removed here.
+    static func changed() {
+        NotificationCenter.default.post(name: .bookmarksDidChange, object: nil)
     }
 
     /// Inserts account rows the device does not have. Local rows stay, including after sign-out.
-    static func merge(_ remote: [BookmarkDraft], into context: ModelContext) throws {
-        let hymns = try context.fetch(FetchDescriptor<HymnBookmark>())
-        let devotions = try context.fetch(FetchDescriptor<DevotionBookmark>())
-        var hymnIDs = Set(hymns.map(\.hymnId))
-        var devotionKeys = Set(devotions.map(\.key))
+    /// A row removed on this device is skipped unless it was saved again after the removal.
+    static func merge(
+        _ remote: [BookmarkDraft],
+        into context: ModelContext,
+        defaults: UserDefaults = .standard
+    ) throws {
+        var keys = Set(try context.fetch(FetchDescriptor<Bookmark>()).map(\.key))
+        let removals = BookmarkRemovals.all(defaults: defaults)
         for row in remote where !row.type.isEmpty && !row.id.isEmpty {
-            let createdAt = Date(timeIntervalSince1970: Double(row.createdAt) / 1000)
-            if row.type == BookmarkType.hymns {
-                guard hymnIDs.insert(row.id).inserted else { continue }
-                context.insert(
-                    HymnBookmark(
-                        hymnId: row.id,
-                        titleSnapshot: row.titleSnapshot,
-                        language: "",
-                        createdAt: createdAt
-                    )
-                )
-            } else {
-                let key = row.key
-                guard devotionKeys.insert(key).inserted else { continue }
-                context.insert(
-                    DevotionBookmark(
-                        type: row.type,
-                        itemId: row.id,
-                        titleSnapshot: row.titleSnapshot,
-                        language: "",
-                        createdAt: createdAt
-                    )
-                )
+            if let removedAt = removals[row.key] {
+                if row.createdAt <= removedAt { continue }
+                BookmarkRemovals.clear(row.key, defaults: defaults)
             }
+            guard keys.insert(row.key).inserted else { continue }
+            context.insert(
+                Bookmark(
+                    type: row.type,
+                    itemId: row.id,
+                    titleSnapshot: row.titleSnapshot,
+                    language: "",
+                    createdAt: Date(timeIntervalSince1970: Double(row.createdAt) / 1000)
+                )
+            )
         }
         if context.hasChanges {
             try context.save()
         }
+        try BookmarkLimit.enforce(in: context, defaults: defaults)
     }
 
-    private static func milliseconds(_ date: Date) -> Int64 {
+    static func milliseconds(_ date: Date) -> Int64 {
         Int64((date.timeIntervalSince1970 * 1000).rounded())
     }
 }

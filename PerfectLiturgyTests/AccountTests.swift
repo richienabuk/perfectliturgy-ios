@@ -73,6 +73,7 @@ import UIKit
     await session.restore(client: AuthClient(transport: script, authBase: base, apiBase: base))
     #expect(!session.isSignedIn)
     #expect(store.token == nil)
+    #expect(store.cachedAccount == nil)
 }
 
 @Test func `google starts in the browser and a magic link posts the callback`() async throws {
@@ -154,7 +155,7 @@ import UIKit
     let container = try HymnStore.make(inMemory: true)
     let context = container.mainContext
     let created = Date(timeIntervalSince1970: 1_729_000_000)
-    context.insert(HymnBookmark(hymnId: "local-hymn", titleSnapshot: "Test hymn one", language: "en", createdAt: created))
+    context.insert(Bookmark(type: BookmarkType.hymns, itemId: "local-hymn", titleSnapshot: "Test hymn one", language: "en", createdAt: created))
     try context.save()
 
     let script = AuthScript()
@@ -174,7 +175,7 @@ import UIKit
     let client = AuthClient(transport: script, authBase: base, apiBase: base)
     let link = try #require(URL(string: "perfectliturgy://auth?session_token=from-link"))
     session.prepare(.google)
-    await session.accept(link, client: client, context: context)
+    await session.accept(link, client: client, context: context, trusted: true)
 
     #expect(session.isSignedIn)
     #expect(session.token == "from-link")
@@ -188,17 +189,17 @@ import UIKit
     #expect(sent.map(\.createdAt) == [1_729_000_000_000])
     #expect(put.value(forHTTPHeaderField: "Authorization") == "Bearer from-link")
 
-    let stored = try context.fetch(FetchDescriptor<HymnBookmark>()).sorted { $0.hymnId < $1.hymnId }
-    #expect(stored.map(\.hymnId) == ["local-hymn", "remote-hymn"])
-    #expect(stored.first { $0.hymnId == "local-hymn" }?.titleSnapshot == "Test hymn one")
+    let stored = try context.fetch(FetchDescriptor<Bookmark>()).sorted { $0.itemId < $1.itemId }
+    #expect(stored.map(\.itemId) == ["local-hymn", "remote-hymn"])
+    #expect(stored.first { $0.itemId == "local-hymn" }?.titleSnapshot == "Test hymn one")
 
     let failing = AuthScript()
     failing.fail = true
     await session.signOut(client: AuthClient(transport: failing, authBase: base, apiBase: base))
     #expect(!session.isSignedIn)
     #expect(session.token == nil)
-    let after = try context.fetch(FetchDescriptor<HymnBookmark>())
-    #expect(Set(after.map(\.hymnId)) == ["local-hymn", "remote-hymn"])
+    let after = try context.fetch(FetchDescriptor<Bookmark>())
+    #expect(Set(after.map(\.itemId)) == ["local-hymn", "remote-hymn"])
 }
 
 @Test func `a prayer and a litany join the account with their type`() async throws {
@@ -206,7 +207,7 @@ import UIKit
     let context = container.mainContext
     let created = Date(timeIntervalSince1970: 1_729_000_000)
     context.insert(
-        DevotionBookmark(
+        Bookmark(
             type: BookmarkType.prayers,
             itemId: "test-one",
             titleSnapshot: "Test prayer one",
@@ -233,7 +234,7 @@ import UIKit
     let client = AuthClient(transport: script, authBase: base, apiBase: base)
     let link = try #require(URL(string: "perfectliturgy://auth?session_token=from-link"))
     session.prepare(.google)
-    await session.accept(link, client: client, context: context)
+    await session.accept(link, client: client, context: context, trusted: true)
 
     let put = try #require(script.requests.first { $0.httpMethod == "PUT" })
     let sent = try JSONDecoder().decode([BookmarkDraft].self, from: put.httpBody ?? Data())
@@ -244,7 +245,7 @@ import UIKit
     let fields = try #require(JSONSerialization.jsonObject(with: put.httpBody ?? Data()) as? [[String: Any]])
     #expect(fields.first?["hymnId"] == nil)
 
-    let stored = try context.fetch(FetchDescriptor<DevotionBookmark>()).sorted { $0.itemId < $1.itemId }
+    let stored = try context.fetch(FetchDescriptor<Bookmark>()).sorted { $0.itemId < $1.itemId }
     #expect(stored.map(\.type) == ["litanies", "prayers"])
     #expect(stored.map(\.itemId) == ["saints", "test-one"])
     #expect(stored.first { $0.itemId == "test-one" }?.titleSnapshot == "Test prayer one")
@@ -320,8 +321,7 @@ import UIKit
     let store = MemorySessionStore()
     try store.save("session-1")
     let defaults = try #require(UserDefaults(suiteName: "signout-\(UUID().uuidString)"))
-    defaults.set(Data(#"{"id":"user_1","email":"ada@example.com","name":"Ada"}"#.utf8), forKey: "account.profile")
-    defaults.set(SignInMethod.email.rawValue, forKey: "account.signInMethod")
+    store.saveCachedAccount(#"{"profile":{"id":"user_1","email":"ada@example.com","name":"Ada"},"method":"email"}"#)
     let session = AppSession(store: store, defaults: defaults)
     #expect(session.profile?.email == "ada@example.com")
     let script = AuthScript()
@@ -366,9 +366,9 @@ import UIKit
 
     let signedDefaults = try #require(UserDefaults(suiteName: "account-ui-in-\(UUID().uuidString)"))
     let profile = AccountProfile(id: "user_1", email: "alex@example.com", name: "Alex")
-    signedDefaults.set(try JSONEncoder().encode(profile), forKey: "account.profile")
-    signedDefaults.set(SignInMethod.google.rawValue, forKey: "account.signInMethod")
-    let signed = AppSession(token: "session-1", store: MemorySessionStore(), defaults: signedDefaults)
+    let signedStore = MemorySessionStore()
+    AccountCache(store: signedStore, defaults: signedDefaults).save(profile: profile, method: .google)
+    let signed = AppSession(token: "session-1", store: signedStore, defaults: signedDefaults)
     let signedView = AccountView()
         .modelContainer(try HymnStore.make(inMemory: true))
         .environment(AppNavigation())

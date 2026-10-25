@@ -236,10 +236,10 @@ private let stanzaHymn = Data("""
     """.utf8)
     try HymnImporter.importData(first, into: context)
     let hymn = try #require(try context.fetch(FetchDescriptor<HymnRecord>()).first)
-    try HymnImporter.toggleBookmark(hymn, in: context)
+    try toggleHymnBookmark(hymn, in: context)
     try HymnImporter.importData(second, into: context)
-    let bookmarks = try context.fetch(FetchDescriptor<HymnBookmark>())
-    #expect(bookmarks.map(\.hymnId) == ["test-new"])
+    let bookmarks = try context.fetch(FetchDescriptor<Bookmark>())
+    #expect(bookmarks.map(\.itemId) == ["test-new"])
     #expect(try context.fetch(FetchDescriptor<HymnRecord>()).count == 1)
 }
 

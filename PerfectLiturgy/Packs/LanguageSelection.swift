@@ -34,4 +34,10 @@ final class LanguageSelection {
     func select(_ code: String?, for kind: DevotionKind) {
         select(code, for: kind.rawValue)
     }
+
+    /// The language a saved prayer or litany opens in first. Hymns have none, because a hymn id is one language.
+    func openCode(forBookmarkType type: String) -> String? {
+        guard DevotionKind(rawValue: type) != nil else { return nil }
+        return code(for: type) ?? PackLanguages.defaultCode
+    }
 }

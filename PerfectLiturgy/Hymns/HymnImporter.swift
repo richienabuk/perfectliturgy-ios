@@ -277,28 +277,6 @@ enum HymnImporter {
         }
     }
 
-    static func toggleBookmark(_ hymn: HymnRecord, in context: ModelContext) throws {
-        if let bookmark = try fetchBookmark(id: hymn.id, in: context) {
-            context.delete(bookmark)
-        } else {
-            context.insert(
-                HymnBookmark(
-                    hymnId: hymn.id,
-                    titleSnapshot: hymn.title,
-                    language: hymn.language,
-                    createdAt: .now
-                )
-            )
-        }
-        try context.save()
-    }
-
-    static func removeBookmark(hymnID: String, in context: ModelContext) throws {
-        guard let bookmark = try fetchBookmark(id: hymnID, in: context) else { return }
-        context.delete(bookmark)
-        try context.save()
-    }
-
     static func recordVisit(hymnID: String, in context: ModelContext) throws {
         var visits = try context.fetch(FetchDescriptor<HymnVisit>())
         if let existing = visits.first(where: { $0.hymnId == hymnID }) {
@@ -407,14 +385,14 @@ enum HymnImporter {
         language: String,
         in context: ModelContext
     ) throws {
-        if let bookmark = try fetchBookmark(id: oldID, in: context) {
+        if let bookmark = try Bookmarks.fetch(type: BookmarkType.hymns, id: oldID, in: context) {
             let createdAt = bookmark.createdAt
             context.delete(bookmark)
-            if let clash = try fetchBookmark(id: newID, in: context) {
+            if let clash = try Bookmarks.fetch(type: BookmarkType.hymns, id: newID, in: context) {
                 context.delete(clash)
             }
             context.insert(
-                HymnBookmark(hymnId: newID, titleSnapshot: title, language: language, createdAt: createdAt)
+                Bookmark(type: BookmarkType.hymns, itemId: newID, titleSnapshot: title, language: language, createdAt: createdAt)
             )
         }
         if let visit = try context.fetch(FetchDescriptor<HymnVisit>()).first(where: { $0.hymnId == oldID }) {
@@ -425,8 +403,9 @@ enum HymnImporter {
     }
 
     private static func removeSaved(id: String, in context: ModelContext) throws {
-        if let bookmark = try fetchBookmark(id: id, in: context) {
+        if let bookmark = try Bookmarks.fetch(type: BookmarkType.hymns, id: id, in: context) {
             context.delete(bookmark)
+            BookmarkRemovals.mark(bookmark.key)
         }
         if let visit = try context.fetch(FetchDescriptor<HymnVisit>()).first(where: { $0.hymnId == id }) {
             context.delete(visit)
@@ -440,13 +419,9 @@ enum HymnImporter {
         return try context.fetch(descriptor).first
     }
 
+
     private static func fetch(id: String, in context: ModelContext) throws -> HymnRecord? {
         let descriptor = FetchDescriptor<HymnRecord>(predicate: #Predicate { $0.id == id })
-        return try context.fetch(descriptor).first
-    }
-
-    private static func fetchBookmark(id: String, in context: ModelContext) throws -> HymnBookmark? {
-        let descriptor = FetchDescriptor<HymnBookmark>(predicate: #Predicate { $0.hymnId == id })
         return try context.fetch(descriptor).first
     }
 
@@ -488,15 +463,47 @@ enum HymnImporter {
 }
 
 enum HymnStore {
-    static let shared: ModelContainer = {
+    private static let logger = Logger(subsystem: "com.perfectliturgy", category: "store")
+
+    static let shared: ModelContainer = open()
+
+    /// A store that will not open is moved aside and made again, so the app still starts.
+    /// If even that fails, the app runs on a store in memory for this launch.
+    private static func open() -> ModelContainer {
+        let container: ModelContainer
         do {
-            let container = try make(inMemory: false)
-            try HymnImporter.importBundledIfNeeded(into: container.mainContext)
-            return container
+            container = try make(inMemory: false)
         } catch {
-            fatalError("The hymn store could not be opened.")
+            logger.error("The hymn store could not be opened. It is moved aside.")
+            moveStoreAside()
+            if let fresh = try? make(inMemory: false) {
+                container = fresh
+            } else if let temporary = try? make(inMemory: true) {
+                container = temporary
+            } else {
+                fatalError("The hymn store could not be opened.")
+            }
         }
-    }()
+        do {
+            try HymnImporter.importBundledIfNeeded(into: container.mainContext)
+        } catch {
+            logger.error("The bundled hymns could not be imported.")
+        }
+        return container
+    }
+
+    private static func moveStoreAside() {
+        let manager = FileManager.default
+        guard let folder = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
+              let names = try? manager.contentsOfDirectory(atPath: folder.path)
+        else { return }
+        let stamp = Int(Date().timeIntervalSince1970)
+        for name in names where name.hasPrefix("hymns.store") && !name.contains(".broken-") {
+            let from = folder.appending(path: name)
+            let to = folder.appending(path: "\(name).broken-\(stamp)")
+            try? manager.moveItem(at: from, to: to)
+        }
+    }
 
     static func make(inMemory: Bool) throws -> ModelContainer {
         let configuration = ModelConfiguration(
@@ -516,8 +523,7 @@ enum HymnStore {
     private static let schema = Schema([
         HymnRecord.self,
         HymnSectionRecord.self,
-        HymnBookmark.self,
-        DevotionBookmark.self,
+        Bookmark.self,
         HymnVisit.self,
         BibleVerseRecord.self,
         BibleVersionRecord.self,

@@ -7,8 +7,7 @@ struct AccountView: View {
     @Environment(\.palette) private var palette
     @Environment(\.modelContext) private var modelContext
 
-    @Query private var hymnBookmarks: [HymnBookmark]
-    @Query private var devotionBookmarks: [DevotionBookmark]
+    @Query private var bookmarks: [Bookmark]
     @State private var email = ""
     @FocusState private var emailFocused: Bool
 
@@ -133,7 +132,7 @@ struct AccountView: View {
                         Text(AccountCopy.savedTitle)
                             .font(AppFont.interface(size: 16, weight: .semibold))
                             .foregroundStyle(palette.foreground.color)
-                        Text(AccountCopy.savedDetail(count: hymnBookmarks.count + devotionBookmarks.count))
+                        Text(AccountCopy.savedDetail(count: bookmarks.count))
                             .font(AppFont.body(size: 14))
                             .foregroundStyle(palette.mutedForeground.color)
                     }
@@ -323,7 +322,7 @@ struct AccountView: View {
         session.isWorking = true
         do {
             let url = try await WebSignIn().authenticate(client.startURL(provider: "google"))
-            await session.accept(url, client: client, context: modelContext)
+            await session.accept(url, client: client, context: modelContext, trusted: true)
         } catch AuthError.cancelled {
             session.cancelPending()
         } catch {

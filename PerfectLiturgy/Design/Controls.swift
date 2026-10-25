@@ -95,7 +95,7 @@ struct PLChip: View {
                 .background(isSelected ? palette.primary.color : palette.card.color, in: RoundedRectangle(cornerRadius: Radius.sm))
                 .overlay {
                     RoundedRectangle(cornerRadius: Radius.sm)
-                        .strokeBorder(isSelected ? palette.primary.color : palette.border.color, lineWidth: 1)
+                        .strokeBorder(isSelected ? palette.primary.color : palette.input.color, lineWidth: 1)
                 }
         }
         .buttonStyle(PressScaleButtonStyle())

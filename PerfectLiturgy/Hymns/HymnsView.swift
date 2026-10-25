@@ -17,7 +17,7 @@ struct HymnsView: View {
     @State private var model = HymnListModel()
     /// Read once, off the main thread. A pushed screen and a tab change do not read the file again.
     private let catalog = PackCatalogStore.shared
-    @Query private var bookmarks: [HymnBookmark]
+    @Query private var bookmarks: [Bookmark]
 
     @State private var query = ""
     @State private var debouncedQuery = ""
@@ -375,7 +375,7 @@ struct HymnsView: View {
     private var filtered: [HymnSummary] { model.filtered }
 
     private var savedIDs: Set<String> {
-        Set(bookmarks.map(\.hymnId))
+        Set(bookmarks.filter { $0.type == BookmarkType.hymns }.map(\.itemId))
     }
 
     private var filtersActive: Bool {
@@ -405,6 +405,12 @@ struct HymnsView: View {
 
     private func toggleSaved(_ id: String) {
         guard let hymn = HymnImporter.record(id: id, in: modelContext) else { return }
-        try? HymnImporter.toggleBookmark(hymn, in: modelContext)
+        try? Bookmarks.toggle(
+            type: BookmarkType.hymns,
+            id: hymn.id,
+            title: hymn.title,
+            language: hymn.language,
+            in: modelContext
+        )
     }
 }

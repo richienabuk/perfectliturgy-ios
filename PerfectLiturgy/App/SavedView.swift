@@ -12,6 +12,14 @@ struct SavedRow: Equatable, Identifiable {
     var language: String?
 }
 
+struct SavedGroup: Equatable, Identifiable {
+    var type: String
+    var title: String
+    var rows: [SavedRow]
+
+    var id: String { type }
+}
+
 enum SavedRows {
     static let heading = "Saved"
     static let support = "Keep what you want close at hand."
@@ -25,18 +33,18 @@ enum SavedRows {
     }
 
     /// An installed hymn opens. A missing hymn keeps the stored title and stays closed.
-    static func row(bookmark: HymnBookmark, hymn: HymnRecord?, installed: Set<String>, catalogues: [PackRecord] = PackSeed.rows) -> SavedRow {
+    static func hymnRow(bookmark: Bookmark, hymn: HymnRecord?, installed: Set<String>, catalogues: [PackRecord] = PackSeed.rows) -> SavedRow {
         let language = hymn?.language ?? bookmark.language
         let packInstalled = !language.isEmpty && installed.contains(ContentPack.hymnID(for: language))
         if let hymn, packInstalled {
             return SavedRow(
-                id: bookmark.hymnId,
-                itemId: bookmark.hymnId,
-                type: BookmarkType.hymns,
+                id: bookmark.key,
+                itemId: bookmark.itemId,
+                type: bookmark.type,
                 title: hymn.title,
                 detail: detail(language: hymn.language, massParts: hymn.massParts, catalogues: catalogues),
                 opens: true,
-                route: .hymn(id: bookmark.hymnId),
+                route: .hymn(id: bookmark.itemId),
                 language: hymn.language
             )
         }
@@ -45,27 +53,19 @@ enum SavedRows {
         } else {
             "Hymn pack removed from this device"
         }
-        return SavedRow(
-            id: bookmark.hymnId,
-            itemId: bookmark.hymnId,
-            type: BookmarkType.hymns,
-            title: bookmark.titleSnapshot,
-            detail: message,
-            opens: false,
-            route: nil,
-            language: language
-        )
+        return closedRow(bookmark, detail: message, language: language)
     }
 
     /// An installed prayer or litany opens in the language it was saved in.
-    static func row(
-        bookmark: DevotionBookmark,
+    static func devotionRow(
+        bookmark: Bookmark,
         located: LocatedDevotion?,
         installed: Set<String>,
         catalogues: [PackRecord] = PackSeed.rows
     ) -> SavedRow {
         let packInstalled = !bookmark.language.isEmpty && installed.contains("\(bookmark.type)-\(bookmark.language)")
-        if let located, bookmark.language.isEmpty || packInstalled {
+        let locatedInstalled = located.map { installed.contains("\(bookmark.type)-\($0.language)") } ?? false
+        if let located, bookmark.language.isEmpty || packInstalled || locatedInstalled {
             let name = PackLanguages.language(code: located.language, type: bookmark.type, in: catalogues).packName
             return SavedRow(
                 id: bookmark.key,
@@ -87,15 +87,19 @@ enum SavedRows {
         } else {
             "Not on this device"
         }
-        return SavedRow(
+        return closedRow(bookmark, detail: message, language: bookmark.language)
+    }
+
+    private static func closedRow(_ bookmark: Bookmark, detail: String, language: String) -> SavedRow {
+        SavedRow(
             id: bookmark.key,
             itemId: bookmark.itemId,
             type: bookmark.type,
             title: bookmark.titleSnapshot,
-            detail: message,
+            detail: detail,
             opens: false,
             route: nil,
-            language: bookmark.language
+            language: language
         )
     }
 
@@ -117,48 +121,37 @@ enum SavedRows {
 
     /// Newest first. `limit` keeps the home list to five. Saved passes no limit.
     static func rows(
-        hymns: [HymnBookmark],
-        devotions: [DevotionBookmark],
+        _ bookmarks: [Bookmark],
         hymnLookup: (String) -> HymnRecord?,
-        located: (DevotionBookmark) -> LocatedDevotion?,
+        located: (Bookmark) -> LocatedDevotion?,
         installed: Set<String>,
         catalogues: [PackRecord] = PackSeed.rows,
         limit: Int? = nil
     ) -> [SavedRow] {
-        enum Source {
-            case hymn(HymnBookmark)
-            case devotion(DevotionBookmark)
+        let newest = bookmarks.sorted { lhs, rhs in
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+            return lhs.key < rhs.key
         }
-        var dated: [(Date, String, Source)] = []
-        dated.reserveCapacity(hymns.count + devotions.count)
-        for bookmark in hymns {
-            dated.append((bookmark.createdAt, bookmark.hymnId, .hymn(bookmark)))
-        }
-        for bookmark in devotions {
-            dated.append((bookmark.createdAt, bookmark.key, .devotion(bookmark)))
-        }
-        dated.sort { lhs, rhs in
-            if lhs.0 != rhs.0 { return lhs.0 > rhs.0 }
-            return lhs.1 < rhs.1
-        }
-        let chosen = dated.prefix(limit ?? dated.count)
-        return chosen.map { item in
-            switch item.2 {
-            case .hymn(let bookmark):
-                row(
-                    bookmark: bookmark,
-                    hymn: hymnLookup(bookmark.hymnId),
-                    installed: installed,
-                    catalogues: catalogues
-                )
-            case .devotion(let bookmark):
-                row(
-                    bookmark: bookmark,
-                    located: located(bookmark),
-                    installed: installed,
-                    catalogues: catalogues
-                )
+        return newest.prefix(limit ?? newest.count).map { bookmark in
+            if bookmark.type == BookmarkType.hymns {
+                hymnRow(bookmark: bookmark, hymn: hymnLookup(bookmark.itemId), installed: installed, catalogues: catalogues)
+            } else {
+                devotionRow(bookmark: bookmark, located: located(bookmark), installed: installed, catalogues: catalogues)
             }
+        }
+    }
+
+    static let groupOrder: [(type: String, title: String)] = [
+        (BookmarkType.hymns, "Hymns"),
+        (BookmarkType.prayers, "Prayers"),
+        (BookmarkType.litanies, "Litanies"),
+    ]
+
+    /// Saved shows one group per type, in a fixed order. Each keeps the newest-first order of `rows`.
+    static func groups(_ rows: [SavedRow]) -> [SavedGroup] {
+        groupOrder.compactMap { entry in
+            let inGroup = rows.filter { $0.type == entry.type }
+            return inGroup.isEmpty ? nil : SavedGroup(type: entry.type, title: entry.title, rows: inGroup)
         }
     }
 
@@ -171,6 +164,13 @@ enum SavedRows {
     }
 }
 
+/// A bookmark just removed from Saved, kept for a few seconds so Undo can put it back.
+private struct RemovedBookmark: Equatable {
+    var draft: BookmarkDraft
+    var language: String
+    var title: String
+}
+
 struct SavedView: View {
     @Environment(AppSession.self) private var session
     @Environment(AppNavigation.self) private var navigation
@@ -180,9 +180,10 @@ struct SavedView: View {
     @Environment(LanguageSelection.self) private var selection
     @Environment(\.modelContext) private var modelContext
 
-    @Query(sort: \HymnBookmark.createdAt, order: .reverse) private var bookmarks: [HymnBookmark]
-    @Query(sort: \DevotionBookmark.createdAt, order: .reverse) private var devotions: [DevotionBookmark]
+    @Query(sort: \Bookmark.createdAt, order: .reverse) private var bookmarks: [Bookmark]
     @State private var savedRows: [SavedRow] = []
+    @State private var undo: RemovedBookmark?
+    @State private var undoTimer: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -196,15 +197,8 @@ struct SavedView: View {
                             .foregroundStyle(palette.mutedForeground.color)
                             .fixedSize(horizontal: false, vertical: true)
                     } else {
-                        VStack(spacing: 0) {
-                            ForEach(Array(savedRows.enumerated()), id: \.element.id) { index, row in
-                                savedRow(row)
-                                if index < savedRows.count - 1 {
-                                    Rectangle()
-                                        .fill(palette.border.color)
-                                        .frame(height: 1)
-                                }
-                            }
+                        ForEach(SavedRows.groups(savedRows)) { group in
+                            groupSection(group)
                         }
                     }
                 }
@@ -215,13 +209,21 @@ struct SavedView: View {
             }
         }
         .background(palette.background.color)
+        .overlay(alignment: .bottom) {
+            if let undo {
+                undoBar(undo)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: undo)
         .navigationTitle(SavedRows.heading)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
         .task { reloadRows() }
-        .onChange(of: bookmarks.map(\.hymnId)) { _, _ in reloadRows() }
-        .onChange(of: devotions.map(\.key)) { _, _ in reloadRows() }
+        .onChange(of: bookmarks.map(\.key)) { _, _ in reloadRows() }
         .onChange(of: packs.ids) { _, _ in reloadRows() }
+        .onChange(of: selection.code(for: .prayers)) { _, _ in reloadRows() }
+        .onChange(of: selection.code(for: .litanies)) { _, _ in reloadRows() }
         .onReceive(NotificationCenter.default.publisher(for: .hymnStoreDidChange)) { _ in
             reloadRows()
         }
@@ -237,16 +239,35 @@ struct SavedView: View {
         }
     }
 
+    private func groupSection(_ group: SavedGroup) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(group.title)
+                .font(AppFont.title(size: 22))
+                .foregroundStyle(palette.foreground.color)
+                .accessibilityAddTraits(.isHeader)
+            VStack(spacing: 0) {
+                ForEach(Array(group.rows.enumerated()), id: \.element.id) { index, row in
+                    savedRow(row)
+                    if index < group.rows.count - 1 {
+                        Rectangle()
+                            .fill(palette.border.color)
+                            .frame(height: 1)
+                    }
+                }
+            }
+        }
+    }
+
     private func reloadRows() {
         savedRows = SavedRows.rows(
-            hymns: bookmarks,
-            devotions: devotions,
+            bookmarks,
             hymnLookup: { HymnImporter.record(id: $0, in: modelContext) },
             located: { bookmark in
                 DevotionBookmarks.locate(
                     type: bookmark.type,
                     id: bookmark.itemId,
                     language: bookmark.language,
+                    current: selection.openCode(forBookmarkType: bookmark.type),
                     installed: packs.ids
                 )
             },
@@ -304,13 +325,62 @@ struct SavedView: View {
         .contentShape(Rectangle())
     }
 
+    /// Removes the bookmark and offers Undo for a few seconds.
+    private func remove(_ row: SavedRow) {
+        guard let bookmark = bookmarks.first(where: { $0.key == row.id }) else { return }
+        let removed = (draft: Bookmarks.draft(of: bookmark), language: bookmark.language)
+        do {
+            try Bookmarks.remove(type: row.type, id: row.itemId, in: modelContext)
+        } catch {
+            return
+        }
+        undo = RemovedBookmark(draft: removed.draft, language: removed.language, title: row.title)
+        AccessibilityNotification.Announcement("Removed \(row.title). Undo is available.").post()
+        undoTimer?.cancel()
+        undoTimer = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled else { return }
+            undo = nil
+        }
+    }
+
+    private func restoreRemoved() {
+        guard let removed = undo else { return }
+        undoTimer?.cancel()
+        undo = nil
+        try? Bookmarks.restore(removed.draft, language: removed.language, in: modelContext)
+    }
+
+    private func undoBar(_ removed: RemovedBookmark) -> some View {
+        HStack(spacing: 12) {
+            Text("Removed \(removed.title).")
+                .font(AppFont.interface(size: 14))
+                .foregroundStyle(palette.foreground.color)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: restoreRemoved) {
+                Text("Undo")
+                    .font(AppFont.interface(size: 15, weight: .semibold))
+                    .foregroundStyle(palette.emphasis.color)
+                    .frame(minWidth: ControlMetrics.minimumHeight, minHeight: ControlMetrics.minimumHeight)
+            }
+            .buttonStyle(PressScaleButtonStyle())
+            .accessibilityIdentifier("saved.undo")
+        }
+        .padding(.horizontal, 16)
+        .background(palette.card.color, in: RoundedRectangle(cornerRadius: Radius.lg))
+        .overlay {
+            RoundedRectangle(cornerRadius: Radius.lg)
+                .strokeBorder(palette.input.color, lineWidth: 1)
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 12)
+        .accessibilityElement(children: .contain)
+    }
+
     private func removeButton(_ row: SavedRow) -> some View {
         Button {
-            if row.type == BookmarkType.hymns {
-                try? HymnImporter.removeBookmark(hymnID: row.itemId, in: modelContext)
-            } else {
-                try? DevotionBookmarks.remove(type: row.type, id: row.itemId, in: modelContext)
-            }
+            remove(row)
         } label: {
             Image(systemName: "bookmark.fill")
                 .font(.system(size: 16))

@@ -89,7 +89,7 @@ struct DevotionSearchField: View {
         .background(palette.card.color, in: RoundedRectangle(cornerRadius: Radius.lg))
         .overlay {
             RoundedRectangle(cornerRadius: Radius.lg)
-                .strokeBorder(palette.border.color, lineWidth: 1)
+                .strokeBorder(palette.input.color, lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(prompt)
@@ -121,7 +121,7 @@ struct SaveMark: View {
                 .overlay {
                     if framed {
                         RoundedRectangle(cornerRadius: Radius.md)
-                            .strokeBorder(palette.border.color, lineWidth: 1)
+                            .strokeBorder(palette.input.color, lineWidth: 1)
                     }
                 }
         }

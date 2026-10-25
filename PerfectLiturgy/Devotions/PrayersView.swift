@@ -10,7 +10,7 @@ struct PrayersView: View {
     @Environment(\.splitsColumns) private var splitsColumns
 
     @Environment(\.modelContext) private var modelContext
-    @Query private var saved: [DevotionBookmark]
+    @Query private var saved: [Bookmark]
 
     @State private var showsLanguages = false
     @State private var openDownloads = false
@@ -150,7 +150,7 @@ struct PrayersView: View {
 
     private func toggle(_ prayer: SpecialPrayer) {
         guard let language = choice.active else { return }
-        try? DevotionBookmarks.toggle(
+        try? Bookmarks.toggle(
             type: BookmarkType.prayers,
             id: prayer.id,
             title: prayer.title,
@@ -185,7 +185,7 @@ struct PrayerView: View {
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
     @Environment(\.modelContext) private var modelContext
-    @Query private var saved: [DevotionBookmark]
+    @Query private var saved: [Bookmark]
 
     private var choice: DevotionLanguageChoice {
         DevotionLanguageChoice(.prayers, requested: selection.code(for: .prayers), installed: packs.languages(for: .prayers), catalog: catalog.packs)
@@ -238,7 +238,7 @@ struct PrayerView: View {
                     identifier: "prayer.save.\(prayer.id)"
                 ) {
                     guard let language = choice.active else { return }
-                    try? DevotionBookmarks.toggle(
+                    try? Bookmarks.toggle(
                         type: BookmarkType.prayers,
                         id: prayer.id,
                         title: prayer.title,
