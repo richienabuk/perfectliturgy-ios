@@ -460,5 +460,4 @@ private func importedFixtures() throws -> (ModelContainer, [HymnRecord]) {
     let limit = Duration.milliseconds(5)
     #endif
     #expect(average < limit, "average refilter \(average)")
-    print("average refilter over \(runs) runs: \(average)")
 }

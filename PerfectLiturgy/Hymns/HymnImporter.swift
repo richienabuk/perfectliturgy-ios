@@ -232,8 +232,6 @@ enum HymnImporter {
     }
 
     static func page(id: String, in context: ModelContext) -> HymnPage? {
-        let signpost = Performance.signposter.beginInterval("hymns.page")
-        defer { Performance.signposter.endInterval("hymns.page", signpost) }
         guard let hymn = record(id: id, in: context) else { return nil }
         return hymn.page
     }

@@ -1,5 +1,4 @@
 import Foundation
-import os
 import SwiftData
 
 /// Reads the hymn list on its own context, off the main thread.
@@ -9,8 +8,6 @@ import SwiftData
 @ModelActor
 actor HymnCatalogueReader {
     func summaries() -> [HymnSummary] {
-        let signpost = Performance.signposter.beginInterval("hymns.catalogue")
-        defer { Performance.signposter.endInterval("hymns.catalogue", signpost) }
         var descriptor = FetchDescriptor<HymnRecord>(sortBy: [
             SortDescriptor(\.language),
             SortDescriptor(\.hymnNumber),

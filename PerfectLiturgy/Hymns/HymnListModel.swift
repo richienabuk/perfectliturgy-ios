@@ -1,5 +1,4 @@
 import Observation
-import os
 import SwiftData
 
 /// Holds the hymn catalogue and the list derived from it.
@@ -60,8 +59,6 @@ final class HymnListModel {
 
     func refilter(_ inputs: Inputs, force: Bool = false) {
         guard force || inputs != self.inputs else { return }
-        let signpost = Performance.signposter.beginInterval("hymns.refilter")
-        defer { Performance.signposter.endInterval("hymns.refilter", signpost) }
         let catalogueNamesChanged = inputs.catalogues != self.inputs.catalogues
         self.inputs = inputs
 
