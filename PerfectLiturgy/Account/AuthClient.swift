@@ -81,7 +81,9 @@ struct AuthClient {
         if body == nil || body?.isEmpty == true || body == "null" { throw AuthError.rejected }
         let fields = Self.fields(in: data)
         guard let email = fields.email else { throw AuthError.rejected }
-        let token = fields.token ?? bearer
+        // The deep-link bearer is the signed session cookie. `session.token` in the
+        // body is the unsigned database token, and Neon rejects that on pack download.
+        let token = Self.signedCookie(in: http) ?? bearer
         guard !token.isEmpty else { throw AuthError.transport }
         return ConfirmedSession(
             token: token,
@@ -229,6 +231,13 @@ struct AuthClient {
             }
         }
         return (id, email, name, token)
+    }
+
+    /// A refreshed signed cookie from `Set-Cookie`. The JSON session token is not this value.
+    fileprivate static func signedCookie(in response: HTTPURLResponse) -> String? {
+        guard let header = cookieHeader(in: response) else { return nil }
+        guard let token = cookieToken(in: header), !token.isEmpty else { return nil }
+        return token
     }
 
     fileprivate static func cookieHeader(in response: HTTPURLResponse) -> String? {

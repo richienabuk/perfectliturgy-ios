@@ -15,7 +15,7 @@ import UIKit
     #expect(AuthReturn.callback(from: other) == nil)
 }
 
-@Test func `get-session stores the bearer, and a server token replaces it`() async throws {
+@Test func `get-session keeps the signed bearer and ignores the unsigned session token`() async throws {
     let kept = AuthScript()
     kept.enqueue(status: 200, body: Data("""
     {"user":{"id":"user_1","email":"ada@example.com","name":"Ada"},"session":{}}
@@ -30,20 +30,32 @@ import UIKit
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer from-link")
     #expect(request.value(forHTTPHeaderField: "Cookie") == "__Secure-neon-auth.session_token=from-link")
 
-    let replaced = AuthScript()
-    replaced.enqueue(status: 200, body: Data("""
-    {"id":"user_2","email":"ada@example.com","name":"Ada","session":{"sessionToken":"from-server"}}
+    let unsigned = AuthScript()
+    unsigned.enqueue(status: 200, body: Data("""
+    {"id":"user_2","email":"ada@example.com","name":"Ada","session":{"token":"raw-db-token","sessionToken":"from-server"}}
     """.utf8))
-    let second = AuthClient(transport: replaced, authBase: base, apiBase: base)
-    let confirmed = try await second.currentSession(bearer: "from-link")
-    #expect(confirmed.token == "from-server")
+    let second = AuthClient(transport: unsigned, authBase: base, apiBase: base)
+    let confirmed = try await second.currentSession(bearer: "signed.cookie")
+    #expect(confirmed.token == "signed.cookie")
     #expect(confirmed.profile.id == "user_2")
+
+    let refreshed = AuthScript()
+    refreshed.enqueue(
+        status: 200,
+        body: Data("""
+        {"user":{"id":"user_3","email":"ada@example.com","name":"Ada"},"session":{"token":"raw-db-token"}}
+        """.utf8),
+        headers: ["Set-Cookie": "__Secure-neon-auth.session_token=refreshed.signature; Path=/; HttpOnly; Secure"]
+    )
+    let third = AuthClient(transport: refreshed, authBase: base, apiBase: base)
+    let rotated = try await third.currentSession(bearer: "signed.cookie")
+    #expect(rotated.token == "refreshed.signature")
 
     let missing = AuthScript()
     missing.enqueue(status: 200, body: Data("null\n".utf8))
-    let unsigned = AuthClient(transport: missing, authBase: base, apiBase: base)
+    let rejected = AuthClient(transport: missing, authBase: base, apiBase: base)
     await #expect(throws: AuthError.rejected) {
-        try await unsigned.currentSession(bearer: "stale")
+        try await rejected.currentSession(bearer: "stale")
     }
 }
 
@@ -165,7 +177,7 @@ import UIKit
     await session.accept(link, client: client, context: context)
 
     #expect(session.isSignedIn)
-    #expect(session.token == "session-1")
+    #expect(session.token == "from-link")
     #expect(session.profile?.email == "ada@example.com")
     #expect(session.method == .google)
     let put = try #require(script.requests.first { $0.httpMethod == "PUT" })
@@ -173,7 +185,7 @@ import UIKit
     #expect(sent.map(\.hymnId) == ["local-hymn"])
     #expect(sent.map(\.titleSnapshot) == ["Test hymn one"])
     #expect(sent.map(\.createdAt) == [1_729_000_000_000])
-    #expect(put.value(forHTTPHeaderField: "Authorization") == "Bearer session-1")
+    #expect(put.value(forHTTPHeaderField: "Authorization") == "Bearer from-link")
 
     let stored = try context.fetch(FetchDescriptor<HymnBookmark>()).sorted { $0.hymnId < $1.hymnId }
     #expect(stored.map(\.hymnId) == ["local-hymn", "remote-hymn"])
