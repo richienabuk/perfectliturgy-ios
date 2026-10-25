@@ -10,7 +10,7 @@ The service-account JSON stays on the server. It does not belong in this repo.
 2. Enable **Push Notifications** and **Background Modes** (Background fetch and Remote notifications).
 3. Create an APNs Auth Key (a `.p8` file). Note the Key ID and your Team ID `2KA43TTV35`. You can download the `.p8` file once.
 
-The project already sets the `aps-environment` entitlement (`development` for Debug, `production` for Release) and the background modes in `PerfectLiturgy/Info.plist`.
+Push is suspended. `PerfectLiturgy.entitlements` is empty and `Info.plist` keeps background fetch only, so a personal team can install the app. A paid team restores `aps-environment` (`development` for Debug, `production` for Release) and the `remote-notification` background mode.
 
 ## 2. Firebase
 

@@ -8,11 +8,18 @@ import UserNotifications
 private let noticeLog = Logger(subsystem: "com.perfectliturgy", category: "notices")
 
 final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
+    /// Off so a personal team can install the app. Turn on with the push entitlement.
+    static let pushEnabled = false
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         BackgroundSync.register()
+        // Push is off while the app is signed by a personal team. See PerfectLiturgy.entitlements.
+        guard Self.pushEnabled else {
+            noticeLog.notice("Push is off. Notices stay off until the push entitlement returns.")
+            return true
+        }
         guard Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil else {
             noticeLog.notice("GoogleService-Info.plist is missing. Notices stay off until it is added.")
             return true
