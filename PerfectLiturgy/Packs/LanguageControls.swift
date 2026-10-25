@@ -21,14 +21,14 @@ struct LanguageButton: View {
                     .font(AppFont.interface(size: 15, weight: .semibold))
                     .foregroundStyle(palette.foreground.color)
                     .lineLimit(1)
-                    .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
+                    .frame(maxWidth: fillsWidth ? .infinity : Self.compactMaxWidth, alignment: .leading)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(palette.emphasis.color)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .frame(maxWidth: fillsWidth ? .infinity : Self.compactMaxWidth, minHeight: ControlMetrics.minimumHeight, alignment: .leading)
+            .frame(maxWidth: fillsWidth ? .infinity : nil, minHeight: ControlMetrics.minimumHeight, alignment: .leading)
             .background(palette.card.color, in: RoundedRectangle(cornerRadius: Radius.lg))
             .overlay {
                 RoundedRectangle(cornerRadius: Radius.lg)
@@ -36,6 +36,7 @@ struct LanguageButton: View {
             }
         }
         .buttonStyle(PressScaleButtonStyle())
+        .fixedSize(horizontal: !fillsWidth, vertical: false)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(title)
     }

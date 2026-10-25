@@ -188,11 +188,6 @@ struct RosaryView: View {
                     beadCard(decade: decade, count: mystery.titles.count, focus: focus, label: label)
                 }
             }
-            Text("Pray one step at a time. The progress follows the five decades.")
-                .font(AppFont.interface(size: 13))
-                .foregroundStyle(palette.mutedForeground.color)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
         }
     }
 
