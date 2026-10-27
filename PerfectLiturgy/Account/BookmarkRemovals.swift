@@ -7,42 +7,122 @@ extension Notification.Name {
     nonisolated static let bookmarksDidChange = Notification.Name("com.perfectliturgy.bookmarksDidChange")
 }
 
-/// Bookmarks removed on this device, with the time of removal.
+/// Bookmarks removed on this device, with the time of removal and the row the account needs.
 ///
-/// The server keeps every bookmark it is sent and has no delete route. Without this list, the next merge
-/// would read a removed bookmark back from the account and save it again. An account row is skipped when it
-/// was made before the removal. A row saved again on another device is newer, so it comes back.
+/// The account keeps a removed row and reads `deletedAt`. This list is what the next push sends, and it
+/// stops an older save from coming back. A row saved again after the removal is newer, so it comes back.
 nonisolated enum BookmarkRemovals {
     static let storageKey = "bookmarks.removed"
     private static let limit = 500
 
+    /// Removal time in milliseconds, keyed by `type|id`.
     static func all(defaults: UserDefaults = .standard) -> [String: Int64] {
-        guard let stored = defaults.dictionary(forKey: storageKey) else { return [:] }
-        var result: [String: Int64] = [:]
-        for (key, value) in stored {
-            if let number = value as? NSNumber { result[key] = number.int64Value }
-        }
-        return result
+        load(defaults: defaults).mapValues(\.deletedAt)
+    }
+
+    /// Removals that can be sent. A time with no row, from an older install, is kept for merge only.
+    static func pending(defaults: UserDefaults = .standard) -> [BookmarkDraft] {
+        load(defaults: defaults).values.compactMap(\.draft)
     }
 
     static func mark(_ key: String, at date: Date = .now, defaults: UserDefaults = .standard) {
-        var removals = all(defaults: defaults)
-        removals[key] = Int64((date.timeIntervalSince1970 * 1000).rounded())
-        if removals.count > limit {
-            let newest = removals.sorted { $0.value > $1.value }.prefix(limit)
-            removals = Dictionary(uniqueKeysWithValues: newest.map { ($0.key, $0.value) })
-        }
-        defaults.set(removals, forKey: storageKey)
+        var records = load(defaults: defaults)
+        var record = records[key] ?? Record(type: "", id: "", titleSnapshot: "", createdAt: 0, deletedAt: 0)
+        record.deletedAt = milliseconds(date)
+        records[key] = record
+        save(records, defaults: defaults)
+    }
+
+    static func mark(_ draft: BookmarkDraft, at date: Date = .now, defaults: UserDefaults = .standard) {
+        var records = load(defaults: defaults)
+        records[draft.key] = Record(
+            type: draft.type,
+            id: draft.id,
+            titleSnapshot: draft.titleSnapshot,
+            createdAt: draft.createdAt,
+            deletedAt: draft.deletedAt ?? milliseconds(date)
+        )
+        save(records, defaults: defaults)
     }
 
     static func clear(_ key: String, defaults: UserDefaults = .standard) {
-        var removals = all(defaults: defaults)
-        guard removals.removeValue(forKey: key) != nil else { return }
-        defaults.set(removals, forKey: storageKey)
+        var records = load(defaults: defaults)
+        guard records.removeValue(forKey: key) != nil else { return }
+        save(records, defaults: defaults)
     }
 
     static func reset(defaults: UserDefaults = .standard) {
         defaults.removeObject(forKey: storageKey)
+    }
+
+    private struct Record {
+        var type: String
+        var id: String
+        var titleSnapshot: String
+        var createdAt: Int64
+        var deletedAt: Int64
+
+        var draft: BookmarkDraft? {
+            guard !type.isEmpty, !id.isEmpty else { return nil }
+            return BookmarkDraft(
+                type: type,
+                id: id,
+                titleSnapshot: titleSnapshot,
+                createdAt: createdAt,
+                deletedAt: deletedAt
+            )
+        }
+    }
+
+    private static func load(defaults: UserDefaults) -> [String: Record] {
+        guard let stored = defaults.dictionary(forKey: storageKey) else { return [:] }
+        var records: [String: Record] = [:]
+        for (key, value) in stored {
+            if let row = value as? [String: Any] {
+                records[key] = Record(
+                    type: row["type"] as? String ?? "",
+                    id: row["id"] as? String ?? "",
+                    titleSnapshot: row["titleSnapshot"] as? String ?? "",
+                    createdAt: integer(row["createdAt"]) ?? 0,
+                    deletedAt: integer(row["deletedAt"]) ?? 0
+                )
+            } else if let deletedAt = integer(value) {
+                records[key] = Record(type: "", id: "", titleSnapshot: "", createdAt: 0, deletedAt: deletedAt)
+            }
+        }
+        return records
+    }
+
+    private static func save(_ records: [String: Record], defaults: UserDefaults) {
+        var trimmed = records
+        if trimmed.count > limit {
+            let newest = trimmed.sorted { $0.value.deletedAt > $1.value.deletedAt }.prefix(limit)
+            trimmed = Dictionary(uniqueKeysWithValues: newest.map { ($0.key, $0.value) })
+        }
+        let stored = trimmed.mapValues { record -> [String: Any] in
+            [
+                "type": record.type,
+                "id": record.id,
+                "titleSnapshot": record.titleSnapshot,
+                "createdAt": NSNumber(value: record.createdAt),
+                "deletedAt": NSNumber(value: record.deletedAt),
+            ]
+        }
+        defaults.set(stored, forKey: storageKey)
+    }
+
+    private static func integer(_ value: Any?) -> Int64? {
+        switch value {
+        case let number as Int64: return number
+        case let number as Int: return Int64(number)
+        case let number as NSNumber: return number.int64Value
+        case let number as Double: return Int64(number.rounded())
+        default: return nil
+        }
+    }
+
+    private static func milliseconds(_ date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 * 1000).rounded())
     }
 }
 
@@ -62,7 +142,7 @@ enum BookmarkLimit {
 
         let oldest = all.sorted { ($0.createdAt, $0.key) < ($1.createdAt, $1.key) }.prefix(excess)
         for bookmark in oldest {
-            BookmarkRemovals.mark(bookmark.key, defaults: defaults)
+            BookmarkRemovals.mark(Bookmarks.draft(of: bookmark), defaults: defaults)
             context.delete(bookmark)
         }
         try context.save()

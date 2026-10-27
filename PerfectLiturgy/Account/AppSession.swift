@@ -521,7 +521,7 @@ final class AppSession {
             try claimBookmarks(in: context)
             try BookmarkLimit.enforce(in: context, defaults: defaults)
             let pushed = try await client.pushBookmarks(
-                BookmarkSync.payload(try context.fetch(FetchDescriptor<Bookmark>())),
+                BookmarkSync.payload(try context.fetch(FetchDescriptor<Bookmark>()), defaults: defaults),
                 bearer: token
             )
             try BookmarkSync.merge(pushed, into: context, defaults: defaults)

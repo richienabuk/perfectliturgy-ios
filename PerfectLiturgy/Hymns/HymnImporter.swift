@@ -387,6 +387,7 @@ enum HymnImporter {
     ) throws {
         if let bookmark = try Bookmarks.fetch(type: BookmarkType.hymns, id: oldID, in: context) {
             let createdAt = bookmark.createdAt
+            BookmarkRemovals.mark(Bookmarks.draft(of: bookmark))
             context.delete(bookmark)
             if let clash = try Bookmarks.fetch(type: BookmarkType.hymns, id: newID, in: context) {
                 context.delete(clash)
@@ -404,8 +405,8 @@ enum HymnImporter {
 
     private static func removeSaved(id: String, in context: ModelContext) throws {
         if let bookmark = try Bookmarks.fetch(type: BookmarkType.hymns, id: id, in: context) {
+            BookmarkRemovals.mark(Bookmarks.draft(of: bookmark))
             context.delete(bookmark)
-            BookmarkRemovals.mark(bookmark.key)
         }
         if let visit = try context.fetch(FetchDescriptor<HymnVisit>()).first(where: { $0.hymnId == id }) {
             context.delete(visit)

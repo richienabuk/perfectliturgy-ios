@@ -37,9 +37,10 @@ enum Bookmarks {
 
     static func remove(type: String, id: String, in context: ModelContext, defaults: UserDefaults = .standard) throws {
         guard let bookmark = try fetch(type: type, id: id, in: context) else { return }
+        let draft = draft(of: bookmark)
         context.delete(bookmark)
         try context.save()
-        BookmarkRemovals.mark(bookmark.key, defaults: defaults)
+        BookmarkRemovals.mark(draft, defaults: defaults)
         BookmarkSync.changed()
     }
 

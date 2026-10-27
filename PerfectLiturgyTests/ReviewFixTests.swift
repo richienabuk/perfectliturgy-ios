@@ -36,6 +36,90 @@ private func freshDefaults() throws -> UserDefaults {
 
 // MARK: Bookmarks
 
+@Test func `a removed bookmark is sent with the time it was removed`() throws {
+    let container = try HymnStore.make(inMemory: true)
+    let context = container.mainContext
+    defer { withExtendedLifetime(container) {} }
+    let defaults = try freshDefaults()
+    let created = Date(timeIntervalSince1970: 1_729_000_000)
+    context.insert(Bookmark(type: BookmarkType.prayers, itemId: "test-one", titleSnapshot: "Test prayer one", language: "en", createdAt: created))
+    try context.save()
+    try Bookmarks.remove(type: BookmarkType.prayers, id: "test-one", in: context, defaults: defaults)
+
+    let sent = BookmarkSync.payload(try context.fetch(FetchDescriptor<Bookmark>()), defaults: defaults)
+    let row = try #require(sent.first)
+    #expect(sent.count == 1)
+    #expect(row.type == BookmarkType.prayers)
+    #expect(row.id == "test-one")
+    #expect(row.titleSnapshot == "Test prayer one")
+    #expect(row.createdAt == 1_729_000_000_000)
+    let removedAt = try #require(row.deletedAt)
+    #expect(removedAt >= row.createdAt)
+
+    let body = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(sent)) as? [[String: Any]])
+    #expect(body.first?["deletedAt"] as? NSNumber != nil)
+}
+
+@Test func `a saved bookmark is sent with an empty removal time`() throws {
+    let draft = BookmarkDraft(
+        type: BookmarkType.hymns,
+        id: "local-hymn",
+        titleSnapshot: "Test hymn one",
+        createdAt: 1_729_000_000_000
+    )
+    let body = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode([draft])) as? [[String: Any]])
+    #expect(body.first?["deletedAt"] is NSNull)
+}
+
+@Test func `an account removal drops the bookmark on this device`() throws {
+    let container = try HymnStore.make(inMemory: true)
+    let context = container.mainContext
+    defer { withExtendedLifetime(container) {} }
+    let defaults = try freshDefaults()
+    let created = Date(timeIntervalSince1970: 1_729_000_000)
+    context.insert(Bookmark(type: BookmarkType.hymns, itemId: "test-one", titleSnapshot: "Test hymn one", language: "en", createdAt: created))
+    try context.save()
+
+    let removed = BookmarkDraft(
+        type: BookmarkType.hymns,
+        id: "test-one",
+        titleSnapshot: "Test hymn one",
+        createdAt: BookmarkSync.milliseconds(created),
+        deletedAt: BookmarkSync.milliseconds(created) + 5_000
+    )
+    try BookmarkSync.merge([removed], into: context, defaults: defaults)
+    #expect(try context.fetch(FetchDescriptor<Bookmark>()).isEmpty)
+
+    let stale = BookmarkDraft(
+        type: BookmarkType.hymns,
+        id: "test-one",
+        titleSnapshot: "Test hymn one",
+        createdAt: BookmarkSync.milliseconds(created)
+    )
+    try BookmarkSync.merge([stale], into: context, defaults: defaults)
+    #expect(try context.fetch(FetchDescriptor<Bookmark>()).isEmpty)
+}
+
+@Test func `a later save on this device keeps a bookmark the account removed`() throws {
+    let container = try HymnStore.make(inMemory: true)
+    let context = container.mainContext
+    defer { withExtendedLifetime(container) {} }
+    let defaults = try freshDefaults()
+    let created = Date(timeIntervalSince1970: 1_729_000_000)
+    context.insert(Bookmark(type: BookmarkType.litanies, itemId: "saints", titleSnapshot: "Test litany one", language: "en", createdAt: created.addingTimeInterval(10)))
+    try context.save()
+    let removed = BookmarkDraft(
+        type: BookmarkType.litanies,
+        id: "saints",
+        titleSnapshot: "Test litany one",
+        createdAt: BookmarkSync.milliseconds(created),
+        deletedAt: BookmarkSync.milliseconds(created) + 1_000
+    )
+    try BookmarkSync.merge([removed], into: context, defaults: defaults)
+    #expect(try context.fetch(FetchDescriptor<Bookmark>()).map(\.itemId) == ["saints"])
+    #expect(BookmarkRemovals.pending(defaults: defaults).isEmpty)
+}
+
 @Test func `a removed bookmark stays removed until it is saved again`() throws {
     let container = try HymnStore.make(inMemory: true)
     let context = container.mainContext

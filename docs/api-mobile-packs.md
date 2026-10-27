@@ -603,11 +603,11 @@ Translation key for local verse storage = `pack_id` without the `readings-` pref
 
 ### `PUT /v1/bookmarks`
 
-Auth: **required**. Merge local saved hymns, prayers, and litanies after sign-in. The app sends at most 50 rows. It keeps the 50 newest and drops the oldest on the device. The server has no delete route, so `GET` can return older rows. The app does not take them back.
+Auth: **required**. Merge local saved hymns, prayers, and litanies after sign-in, including removals. The device keeps the 50 newest saved items and drops the oldest. A dropped or removed item is sent with `deletedAt`, so the account does not hand it back as saved.
 
 **Body**
 
-`type` is a slug: `hymns`, `prayers` (special prayers), or `litanies`. `id` is that item's id. `createdAt` is milliseconds since epoch.
+`type` is a slug: `hymns`, `prayers` (special prayers), or `litanies`. `id` is that item's id. `createdAt` and `deletedAt` are milliseconds since epoch. `deletedAt` is `null` while the item is saved, or the client time when it was removed. The account keeps the row either way, so another device can drop it.
 
 ```json
 [
@@ -615,26 +615,29 @@ Auth: **required**. Merge local saved hymns, prayers, and litanies after sign-in
     "type": "hymns",
     "id": "uuid",
     "titleSnapshot": "Test hymn one",
-    "createdAt": 1729000000000
+    "createdAt": 1729000000000,
+    "deletedAt": null
   },
   {
     "type": "prayers",
     "id": "uuid",
     "titleSnapshot": "Test prayer one",
-    "createdAt": 1729000000000
+    "createdAt": 1729000000000,
+    "deletedAt": 1729000005000
   },
   {
     "type": "litanies",
     "id": "uuid",
     "titleSnapshot": "Test litany one",
-    "createdAt": 1729000000000
+    "createdAt": 1729000000000,
+    "deletedAt": null
   }
 ]
 ```
 
 ### `GET /v1/bookmarks`
 
-Auth: **required**. List envelope: `{ "data": [ …same bookmark rows… ], "page", "pageSize", "total" }`. Client merges by `type` and `id` without deleting local-only rows unless the product later defines that.
+Auth: **required**. List envelope: `{ "data": [ …same bookmark rows… ], "page", "pageSize", "total" }`. Client merges by `type` and `id`. A row with `deletedAt` set is removed on the device when that time is not older than the local save. A saved row the device does not have is inserted. Other local saves stay.
 
 `PUT` returns the same list envelope after merge.
 

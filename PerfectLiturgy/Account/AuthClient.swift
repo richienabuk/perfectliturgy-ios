@@ -24,11 +24,13 @@ nonisolated enum BookmarkType {
     }
 }
 
-struct BookmarkDraft: Equatable, Sendable {
+nonisolated struct BookmarkDraft: Equatable, Sendable {
     var type: String
     var id: String
     var titleSnapshot: String
     var createdAt: Int64
+    /// Milliseconds since epoch when this device, or the account, removed the item. Nil while it is saved.
+    var deletedAt: Int64? = nil
 
     var key: String { BookmarkType.key(type: type, id: id) }
 }
@@ -39,6 +41,7 @@ extension BookmarkDraft: Codable {
         case id
         case titleSnapshot
         case createdAt
+        case deletedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -46,13 +49,8 @@ extension BookmarkDraft: Codable {
         type = try container.decode(String.self, forKey: .type)
         id = try container.decode(String.self, forKey: .id)
         titleSnapshot = try container.decodeIfPresent(String.self, forKey: .titleSnapshot) ?? ""
-        if let value = try container.decodeIfPresent(Int64.self, forKey: .createdAt) {
-            createdAt = value
-        } else if let value = try container.decodeIfPresent(Double.self, forKey: .createdAt) {
-            createdAt = Int64(value.rounded())
-        } else {
-            createdAt = 0
-        }
+        createdAt = try Self.milliseconds(in: container, forKey: .createdAt) ?? 0
+        deletedAt = try Self.milliseconds(in: container, forKey: .deletedAt)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -61,6 +59,22 @@ extension BookmarkDraft: Codable {
         try container.encode(id, forKey: .id)
         try container.encode(titleSnapshot, forKey: .titleSnapshot)
         try container.encode(createdAt, forKey: .createdAt)
+        // Null clears a removal. Omitting the key would leave the account row saved.
+        try container.encode(deletedAt, forKey: .deletedAt)
+    }
+
+    private static func milliseconds(
+        in container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) throws -> Int64? {
+        guard container.contains(key), try container.decodeNil(forKey: key) == false else { return nil }
+        if let value = try? container.decode(Int64.self, forKey: key) { return value }
+        if let value = try? container.decode(Double.self, forKey: key) { return Int64(value.rounded()) }
+        throw DecodingError.dataCorruptedError(
+            forKey: key,
+            in: container,
+            debugDescription: "Expected a timestamp in milliseconds."
+        )
     }
 }
 
@@ -322,8 +336,12 @@ private struct BookmarkPage {
 }
 
 enum BookmarkSync {
-    static func payload(_ bookmarks: [Bookmark]) -> [BookmarkDraft] {
-        bookmarks.map(Bookmarks.draft(of:))
+    /// Saved rows, then removals the account has not been told about. A saved row wins over a removal of the same item.
+    static func payload(_ bookmarks: [Bookmark], defaults: UserDefaults = .standard) -> [BookmarkDraft] {
+        let saved = bookmarks.map(Bookmarks.draft(of:))
+        let savedKeys = Set(saved.map(\.key))
+        let removed = BookmarkRemovals.pending(defaults: defaults).filter { !savedKeys.contains($0.key) }
+        return saved + removed
     }
 
     /// Tells a signed-in app to push a change. Posted after a bookmark is saved or removed here.
@@ -331,30 +349,51 @@ enum BookmarkSync {
         NotificationCenter.default.post(name: .bookmarksDidChange, object: nil)
     }
 
-    /// Inserts account rows the device does not have. Local rows stay, including after sign-out.
-    /// A row removed on this device is skipped unless it was saved again after the removal.
+    /// Inserts account rows this device does not have. A row with `deletedAt` is removed here.
+    /// A local save newer than that removal stays. A removal on this device stays until a later save.
     static func merge(
         _ remote: [BookmarkDraft],
         into context: ModelContext,
         defaults: UserDefaults = .standard
     ) throws {
-        var keys = Set(try context.fetch(FetchDescriptor<Bookmark>()).map(\.key))
-        let removals = BookmarkRemovals.all(defaults: defaults)
+        var stored: [String: Bookmark] = [:]
+        for bookmark in try context.fetch(FetchDescriptor<Bookmark>()) {
+            stored[bookmark.key] = bookmark
+        }
+        var removals = BookmarkRemovals.all(defaults: defaults)
         for row in remote where !row.type.isEmpty && !row.id.isEmpty {
+            if let deletedAt = row.deletedAt {
+                let savedAt = stored[row.key].map { milliseconds($0.createdAt) }
+                if let savedAt, savedAt > deletedAt {
+                    BookmarkRemovals.clear(row.key, defaults: defaults)
+                    removals[row.key] = nil
+                    continue
+                }
+                if let local = stored.removeValue(forKey: row.key) {
+                    context.delete(local)
+                }
+                if let existing = removals[row.key], existing > deletedAt { continue }
+                var tombstone = row
+                tombstone.deletedAt = deletedAt
+                BookmarkRemovals.mark(tombstone, defaults: defaults)
+                removals[row.key] = deletedAt
+                continue
+            }
             if let removedAt = removals[row.key] {
                 if row.createdAt <= removedAt { continue }
                 BookmarkRemovals.clear(row.key, defaults: defaults)
+                removals[row.key] = nil
             }
-            guard keys.insert(row.key).inserted else { continue }
-            context.insert(
-                Bookmark(
-                    type: row.type,
-                    itemId: row.id,
-                    titleSnapshot: row.titleSnapshot,
-                    language: "",
-                    createdAt: Date(timeIntervalSince1970: Double(row.createdAt) / 1000)
-                )
+            guard stored[row.key] == nil else { continue }
+            let bookmark = Bookmark(
+                type: row.type,
+                itemId: row.id,
+                titleSnapshot: row.titleSnapshot,
+                language: "",
+                createdAt: Date(timeIntervalSince1970: Double(row.createdAt) / 1000)
             )
+            context.insert(bookmark)
+            stored[row.key] = bookmark
         }
         if context.hasChanges {
             try context.save()

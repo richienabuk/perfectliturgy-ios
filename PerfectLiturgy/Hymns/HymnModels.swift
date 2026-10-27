@@ -95,8 +95,9 @@ nonisolated final class HymnSectionRecord {
 }
 
 /// A saved hymn, prayer, or litany. One row per item, in the shape the account sends:
-/// `type`, `id`, `titleSnapshot`, `createdAt`. The key is `type|id`, which is also how the
-/// removal list names an item. `language` stays on the device so a removed pack can still be named.
+/// `type`, `id`, `titleSnapshot`, `createdAt`. A removal is not a row here. It is kept with
+/// `deletedAt` until the account has it. The key is `type|id`. `language` stays on the device
+/// so a removed pack can still be named.
 @Model
 final class Bookmark {
     @Attribute(.unique) var key: String
