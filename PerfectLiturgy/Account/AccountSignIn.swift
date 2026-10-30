@@ -35,13 +35,17 @@ struct AppleCredential: Equatable, Sendable {
 }
 
 /// Google and the magic-link return use the system browser, then `perfectliturgy://auth`.
+@MainActor
 final class WebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding {
     private var session: ASWebAuthenticationSession?
     private var continuation: CheckedContinuation<URL, Error>?
     private var resumed = false
+    /// Set on the main actor before `start()`. The system may ask for it off the main actor.
+    nonisolated(unsafe) private var anchor: ASPresentationAnchor?
 
     func authenticate(_ url: URL) async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
+        anchor = InterfaceAnchor.window
+        return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
             let session = ASWebAuthenticationSession(
                 url: url,
@@ -65,13 +69,14 @@ final class WebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding
     }
 
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        MainActor.assumeIsolated { InterfaceAnchor.window }
+        anchor ?? ASPresentationAnchor()
     }
 
     private func finish(_ result: Result<URL, Error>) {
         guard !resumed else { return }
         resumed = true
         session = nil
+        anchor = nil
         let continuation = continuation
         self.continuation = nil
         continuation?.resume(with: result)
@@ -89,15 +94,18 @@ final class WebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding
 }
 
 /// The system Apple sheet. The server must accept the identity token before a session is stored.
+@MainActor
 final class AppleSignIn: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
     private var controller: ASAuthorizationController?
     private var continuation: CheckedContinuation<AppleCredential, Error>?
     private var nonce = ""
     private var resumed = false
+    nonisolated(unsafe) private var anchor: ASPresentationAnchor?
 
     func authenticate() async throws -> AppleCredential {
         let nonce = AppleNonce.make()
         self.nonce = nonce
+        anchor = InterfaceAnchor.window
         let request = ASAuthorizationAppleIDProvider().createRequest()
         request.requestedScopes = [.fullName, .email]
         request.nonce = AppleNonce.sha256(nonce)
@@ -112,14 +120,14 @@ final class AppleSignIn: NSObject, ASAuthorizationControllerDelegate, ASAuthoriz
     }
 
     nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        MainActor.assumeIsolated { InterfaceAnchor.window }
+        anchor ?? ASPresentationAnchor()
     }
 
     nonisolated func authorizationController(
         controller: ASAuthorizationController,
         didCompleteWithAuthorization authorization: ASAuthorization
     ) {
-        MainActor.assumeIsolated {
+        Task { @MainActor in
             guard
                 let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
                 let data = credential.identityToken,
@@ -142,7 +150,7 @@ final class AppleSignIn: NSObject, ASAuthorizationControllerDelegate, ASAuthoriz
     }
 
     nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-        MainActor.assumeIsolated {
+        Task { @MainActor in
             let nsError = error as NSError
             if nsError.domain == ASAuthorizationError.errorDomain,
                nsError.code == ASAuthorizationError.canceled.rawValue {
@@ -157,6 +165,7 @@ final class AppleSignIn: NSObject, ASAuthorizationControllerDelegate, ASAuthoriz
         guard !resumed else { return }
         resumed = true
         controller = nil
+        anchor = nil
         let continuation = continuation
         self.continuation = nil
         continuation?.resume(with: result)

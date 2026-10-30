@@ -17,7 +17,6 @@ struct ReadingsView: View {
     @State private var month = MonthPage.containing(CivilDate(Date()), firstWeekday: 1)
     @State private var dayReadings: DayReadings?
     @State private var celebrationTitle = ""
-    @State private var weekMark: String?
     @State private var seasonKey = ""
     @State private var activeLectionary = Lectionary.empty
     @State private var cachedCalendars: [CalendarOption] = [CalendarOption.latinRite]
@@ -118,7 +117,7 @@ struct ReadingsView: View {
                 .foregroundStyle(palette.mutedForeground.color)
         } else if let set = activeSet {
             if !celebrationTitle.isEmpty {
-                LiturgicalBanner(title: celebrationTitle, weekMark: weekMark)
+                CelebrationLine(title: celebrationTitle)
             }
             VStack(spacing: 12) {
                 ForEach(set.items) { item in
@@ -414,7 +413,6 @@ struct ReadingsView: View {
         )
         let day = LatinRiteCalendar.day(on: cursor.date, country: selected.celebrations)
         celebrationTitle = day.title
-        weekMark = day.weekMark
         seasonKey = day.season.formulaKey
         let resolved = await ReadingResolver.resolve(
             day: day,
@@ -444,6 +442,31 @@ struct ReadingsView: View {
             root: root
         )
         cachedCalendars = CalendarCatalog.list(installed: installed)
+    }
+}
+
+/// One or two lines naming the day in the liturgical calendar. The season ribbon stays on Today.
+private struct CelebrationLine: View {
+    let title: String
+
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Rectangle()
+                .fill(palette.emphasis.color)
+                .frame(width: 3)
+            Text(title)
+                .font(AppFont.title(size: 22))
+                .foregroundStyle(palette.foreground.color)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 

@@ -119,12 +119,11 @@ enum BackgroundSync {
     static let identifier = "com.perfectliturgy.sync"
 
     static func register() {
+        // `using: nil` runs this on a BGTaskScheduler queue, not the main actor.
+        // Set the expiration handler here, then hop to the main actor for app work.
         BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil) { task in
             guard let task = task as? BGAppRefreshTask else { return }
-            Task { @MainActor in
-                task.expirationHandler = {
-                    Task { @MainActor in SyncController.shared.cancel() }
-                }
+            let work = Task { @MainActor in
                 let allowed = SyncPolicy.allowsAutomatic(
                     enabled: SyncController.shared.autoSyncEnabled(),
                     link: SyncController.shared.link()
@@ -139,6 +138,10 @@ enum BackgroundSync {
                 )
                 task.setTaskCompleted(success: !failed)
                 schedule()
+            }
+            task.expirationHandler = {
+                work.cancel()
+                Task { @MainActor in SyncController.shared.cancel() }
             }
         }
     }
