@@ -46,6 +46,12 @@ nonisolated struct CivilDate: Hashable, Sendable, Comparable {
         return CivilDate(next, calendar: Self.calendar)
     }
 
+    /// Same civil day of month, shifted by whole months. Clamps to the last day when needed.
+    func adding(months: Int) -> CivilDate {
+        let next = Self.calendar.date(byAdding: .month, value: months, to: date) ?? date
+        return CivilDate(next, calendar: Self.calendar)
+    }
+
     func days(until other: CivilDate) -> Int {
         Self.calendar.dateComponents([.day], from: date, to: other.date).day ?? 0
     }
@@ -108,6 +114,14 @@ nonisolated enum LiturgicalSeason: String, Equatable, Sendable {
     case lent
     case easter
     case ordinary
+
+    /// Key into `formulas.acclamation` (§5.4). Ordinary Time is `ordinary_time`, not `ordinary`.
+    var formulaKey: String {
+        switch self {
+        case .ordinary: "ordinary_time"
+        case .advent, .christmas, .lent, .easter: rawValue
+        }
+    }
 }
 
 nonisolated enum LiturgicalRank: Int, Comparable, Sendable {
@@ -152,34 +166,7 @@ nonisolated enum WeekdayCycle: String, Sendable {
     }
 }
 
-nonisolated enum ReadingSlot: String, Codable, CaseIterable, Sendable, Identifiable {
-    case first
-    case psalm
-    case second
-    case acclamation
-    case gospel
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .first: "First reading"
-        case .psalm: "Responsorial psalm"
-        case .second: "Second reading"
-        case .acclamation: "Gospel acclamation"
-        case .gospel: "Gospel"
-        }
-    }
-}
-
-nonisolated struct ReadingCitation: Equatable, Sendable, Identifiable {
-    var slot: ReadingSlot
-    var reference: String
-
-    var id: String { slot.rawValue }
-}
-
-/// One calculated day. `readingKey` keeps the Roman celebration so a country day does not change the citations.
+/// One calculated day. `readingKey` keeps the Latin Rite celebration so a country day does not change the citations.
 nonisolated struct LiturgicalDay: Equatable, Sendable {
     var id: String
     var title: String
@@ -189,11 +176,6 @@ nonisolated struct LiturgicalDay: Equatable, Sendable {
     var weekMark: String?
     var fromCountryCalendar: Bool
     var readingKey: String
-    var slots: [ReadingSlot]
-
-    var hasSecondReading: Bool {
-        slots.contains(.second)
-    }
 }
 
 /// A country calendar entry. A nil year matches the month and day every year. A year matches one full date.

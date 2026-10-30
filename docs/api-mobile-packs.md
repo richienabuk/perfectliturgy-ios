@@ -63,7 +63,8 @@ Lists every pack available for download or sync. The app merges this with local 
       "requires_sign_in": false,
       "mode": "live",
       "metadata": {
-        "display_window": "week"
+        "versification": "lectionary",
+        "coverage_through": "2026-12-31"
       }
     },
     {
@@ -128,9 +129,28 @@ Lists every pack available for download or sync. The app merges this with local 
 
 | Key | Used by | Notes |
 | :--- | :--- | :--- |
-| `display_window` | `readings` | `day` \| `week` \| `month` — how much verse text the sync body covers |
+| `versification` | `readings` | Numbering the verses follow, normally `lectionary`. The server publishes verses under the lectionary's numbering. The client does no mapping |
+| `coverage_through` | `readings` | Last date the pack covers, `YYYY-MM-DD`. Informational: Downloads shows "Readings available through …" |
+| `region` | `calendar` | Two-letter country code for a calendar pack, such as `ng` |
 
 Add future readings-only (or other type-only) fields here instead of new top-level catalog properties.
+
+**Calendar packs (`calendar-{id}`):** `mode: "download"`, `requires_sign_in` per the catalog. A calendar pack is one lectionary in one language, with the country's feast days (`days`), `sunday`, `feria`, `proper` item tables, and `formulas`. The envelope and item fields are in the readings plan (`docs/readings-implementation.md`, §5). Catalog row:
+
+```json
+{
+  "pack_id": "calendar-ng-en",
+  "type": "calendar",
+  "language": "en",
+  "display_name": "Nigeria · English",
+  "revision": "2026-10-01T12:00:00.000Z",
+  "requires_sign_in": false,
+  "mode": "download",
+  "metadata": { "region": "ng" }
+}
+```
+
+Calendar packs carry headings, closings, acclamation phrases, and any lectionary text in their language. The app never stores that text in git. The bundled Latin Rite seed carries citations and slot headings only.
 
 **Order of Mass defaults:** the client seeds `order-en` and `order-la` as installed on first run (bundled assets). Catalog rows for those ids are optional. Every other Order language (`order-es`, `order-efi`, …) is `mode: "download"` and is installed only after `GET …/download`.
 
@@ -570,16 +590,19 @@ Empty `data` when `since` already matches the catalog `revision` means “still 
   "language": "en",
   "revision": "2026-10-18T14:02:11.000Z",
   "metadata": {
-    "display_window": "week"
+    "versification": "lectionary",
+    "coverage_through": "2026-12-31"
   },
   "data": [
     {
-      "book": "Isa",
+      "book": "ISA",
       "chapter": 7,
       "verse": 14,
-      "part": null,
-      "text": "…",
-      "date": "2026-12-20",
+      "text": "Test narration. Test quoted words.",
+      "segments": [
+        { "t": "Test narration.", "part": "a" },
+        { "t": " Test quoted words.", "part": "b", "style": "quote" }
+      ],
       "updated_at": "2026-10-19T12:00:00Z",
       "deleted_at": null
     }
@@ -587,7 +610,7 @@ Empty `data` when `since` already matches the catalog `revision` means “still 
 }
 ```
 
-Translation key for local verse storage = `pack_id` without the `readings-` prefix (`rsvce`). Verse text only for dates inside `metadata.display_window` (fallback: catalog `metadata` for that pack).
+Verse rows have no `date` and no `display_window`. Every verse in the pack is stored. `book` is a USFM id (`ISA`, `PSA`, `1CO`). `segments` is optional (see the readings plan §7.3). Paging uses `cursor` and `next_cursor` (readings plan §10.3). Translation key for local verse storage = `pack_id` without the `readings-` prefix (`rsvce`).
 
 
 | Status | Meaning |

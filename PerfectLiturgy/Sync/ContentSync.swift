@@ -50,6 +50,23 @@ enum ContentSync {
         .sorted()
     }
 
+    /// Installed calendars whose catalog `revision` is ahead of the stored one.
+    static func calendarsNeedingUpdate(
+        installed: Set<String>,
+        catalog: [PackRecord],
+        defaults: UserDefaults
+    ) -> [PackRecord] {
+        catalog
+            .filter { pack in
+                pack.type == "calendar"
+                    && pack.mode == "download"
+                    && installed.contains(pack.packId)
+                    && !pack.revision.isEmpty
+                    && PackFiles.revision(for: pack.packId, defaults: defaults) != pack.revision
+            }
+            .sorted { $0.packId < $1.packId }
+    }
+
     static func run(
         installed: Set<String>,
         catalog: [PackRecord],
@@ -58,8 +75,8 @@ enum ContentSync {
         packs: InstalledPacks,
         supportRoot: URL,
         defaults: UserDefaults,
-        mergeBookmarks: () async throws -> Void,
-        anchor: CivilDate = CivilDate(Date())
+        bibleContainer: ModelContainer = BibleStore.shared,
+        mergeBookmarks: () async throws -> Void
     ) async -> SyncReport {
         guard client.token?.isEmpty == false else {
             return SyncReport(outcome: .needsSignIn, bookmarksKept: false)
@@ -75,13 +92,40 @@ enum ContentSync {
             guard let stored = PackFiles.revision(for: pack.packId, defaults: defaults), !stored.isEmpty else {
                 continue
             }
-            let step = await pullDelta(
+            let step: SyncOutcome
+            if pack.type == "readings" {
+                step = await pullReadingsDelta(
+                    pack,
+                    since: stored,
+                    client: client,
+                    defaults: defaults,
+                    bibleContainer: bibleContainer
+                )
+            } else {
+                step = await pullDelta(
+                    pack,
+                    since: stored,
+                    client: client,
+                    context: context,
+                    defaults: defaults
+                )
+            }
+            summary = worse(summary, step)
+        }
+        for pack in calendarsNeedingUpdate(installed: installed, catalog: catalog, defaults: defaults) {
+            if Task.isCancelled { return SyncReport(outcome: .connection, bookmarksKept: false) }
+            if pack.requiresSignIn, client.token?.isEmpty != false {
+                summary = worse(summary, .needsSignIn)
+                continue
+            }
+            let step = await refreshCalendar(
                 pack,
-                since: stored,
                 client: client,
                 context: context,
+                packs: packs,
+                supportRoot: supportRoot,
                 defaults: defaults,
-                anchor: anchor
+                bibleContainer: bibleContainer
             )
             summary = worse(summary, step)
         }
@@ -96,13 +140,37 @@ enum ContentSync {
         return SyncReport(outcome: summary, bookmarksKept: bookmarksKept)
     }
 
+    private static func refreshCalendar(
+        _ pack: PackRecord,
+        client: PackClient,
+        context: ModelContext,
+        packs: InstalledPacks,
+        supportRoot: URL,
+        defaults: UserDefaults,
+        bibleContainer: ModelContainer
+    ) async -> SyncOutcome {
+        let result = await PackInstaller.install(
+            pack,
+            client: client,
+            context: context,
+            packs: packs,
+            supportRoot: supportRoot,
+            defaults: defaults,
+            bibleContainer: bibleContainer
+        )
+        switch result {
+        case .installed: return .current
+        case .needsSignIn: return .needsSignIn
+        case .unavailable, .connection: return .connection
+        }
+    }
+
     private static func pullDelta(
         _ pack: PackRecord,
         since: String,
         client: PackClient,
         context: ModelContext,
-        defaults: UserDefaults,
-        anchor: CivilDate
+        defaults: UserDefaults
     ) async -> SyncOutcome {
         let data: Data
         do {
@@ -116,8 +184,6 @@ enum ContentSync {
             switch pack.type {
             case "hymns":
                 try HymnImporter.importData(data, into: context)
-            case "readings":
-                try BibleLibrary.applyDelta(data, pack: pack, into: context, anchor: anchor)
             default:
                 return .current
             }
@@ -126,6 +192,47 @@ enum ContentSync {
         }
         if let revision = revision(in: data), !revision.isEmpty {
             PackFiles.storeRevision(revision, for: pack.packId, defaults: defaults)
+        }
+        return .current
+    }
+
+    /// Applies every readings sync page, then stores `revision` only after the last page.
+    private static func pullReadingsDelta(
+        _ pack: PackRecord,
+        since: String,
+        client: PackClient,
+        defaults: UserDefaults,
+        bibleContainer: ModelContainer
+    ) async -> SyncOutcome {
+        var cursor: String?
+        var lastRevision: String?
+        let importer = BibleImporter(modelContainer: bibleContainer)
+        repeat {
+            if Task.isCancelled { return .connection }
+            let data: Data
+            do {
+                data = try await client.sync(packId: pack.packId, since: since, cursor: cursor)
+            } catch let error as PackHTTPError {
+                return mapped(error)
+            } catch {
+                return .connection
+            }
+            let page: BiblePackPayload
+            do {
+                page = try BiblePackReader.decode(data)
+            } catch {
+                return .connection
+            }
+            do {
+                try await importer.applyPage(payload: page, displayName: pack.displayName)
+            } catch {
+                return .connection
+            }
+            lastRevision = page.revision
+            cursor = page.nextCursor
+        } while cursor != nil
+        if let lastRevision, !lastRevision.isEmpty {
+            PackFiles.storeRevision(lastRevision, for: pack.packId, defaults: defaults)
         }
         return .current
     }

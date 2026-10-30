@@ -52,7 +52,7 @@ struct PackClient {
         return try await fetch(url)
     }
 
-    func sync(packId: String, since: String) async throws -> Data {
+    func sync(packId: String, since: String, cursor: String? = nil) async throws -> Data {
         guard PackID.isValid(packId) else { throw PackHTTPError.status(404) }
         let base = apiBase
             .appending(path: "v1")
@@ -62,7 +62,11 @@ struct PackClient {
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
             throw PackHTTPError.transport
         }
-        components.queryItems = [URLQueryItem(name: "since", value: since)]
+        var items = [URLQueryItem(name: "since", value: since)]
+        if let cursor, !cursor.isEmpty {
+            items.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        components.queryItems = items
         guard let url = components.url else { throw PackHTTPError.transport }
         return try await fetch(url)
     }

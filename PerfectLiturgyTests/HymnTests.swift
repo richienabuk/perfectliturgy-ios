@@ -371,7 +371,7 @@ private let stanzaHymn = Data("""
             displayName: code,
             mode: "download"
         )
-        try PackInstaller.remove(
+        try await PackInstaller.remove(
             pack,
             context: context,
             packs: packs,

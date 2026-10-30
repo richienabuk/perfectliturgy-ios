@@ -4,16 +4,26 @@ import SwiftUI
 struct TodayView: View {
     @Environment(AppNavigation.self) private var navigation
     @Environment(InstalledPacks.self) private var packs
+    @Environment(ReadingsPreferences.self) private var readings
     @Environment(LanguageSelection.self) private var selection
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
     @Query(sort: \Bookmark.createdAt, order: .reverse) private var bookmarks: [Bookmark]
     @Environment(\.modelContext) private var modelContext
     @State private var savedRows: [SavedRow] = []
+    @State private var cachedCalendar = CalendarOption.latinRite
+    @State private var page = TodayPage(
+        dateLine: TodayPageBuilder.dateLine(for: CivilDate(Date())),
+        title: "",
+        weekMark: nil,
+        readings: []
+    )
 
-    private var page: TodayPage {
-        TodayPageBuilder.page(for: CivilDate(Date()), lectionary: TodayLibrary.lectionary)
+    private var todayTaskKey: String {
+        "\(packs.ids.sorted().joined(separator: ","))|\(readings.calendarID)|\(readings.bibleVersionID(for: cachedCalendar.language) ?? "")"
     }
+
+    private var calendar: CalendarOption { cachedCalendar }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,8 +31,10 @@ struct TodayView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     header
-                    LiturgicalBanner(title: page.title, weekMark: page.weekMark)
-                    readings
+                    if !page.title.isEmpty {
+                        LiturgicalBanner(title: page.title, weekMark: page.weekMark)
+                    }
+                    readingsSection
                     forLater
                 }
                 .padding(.horizontal, isWide ? 28 : 20)
@@ -36,6 +48,7 @@ struct TodayView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
         .task { reloadSaved() }
+        .task(id: todayTaskKey) { await reloadPage() }
         .onChange(of: bookmarks.map(\.key)) { _, _ in reloadSaved() }
         .onChange(of: packs.ids) { _, _ in reloadSaved() }
         .onChange(of: selection.code(for: .prayers)) { _, _ in reloadSaved() }
@@ -56,7 +69,7 @@ struct TodayView: View {
         }
     }
 
-    private var readings: some View {
+    private var readingsSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             sectionHeader("Today's readings") {
                 navigation.tab = .readings
@@ -75,6 +88,47 @@ struct TodayView: View {
             }
             .padding(.horizontal, isWide ? 4 : 0)
         }
+    }
+
+    @MainActor
+    private func reloadPage() async {
+        refreshCalendar()
+        let selected = cachedCalendar
+        let bundle = Bundle(for: DesignPreferences.self)
+        let lectionary = await LectionarySession.lectionary(
+            calendarID: selected.id,
+            packs: packs,
+            bundle: bundle
+        )
+        let seedFallback: Lectionary? = lectionary.id == CalendarOption.latinRite.id
+            ? nil
+            : await LectionaryStore.shared.seed(bundle: bundle)
+        let versions = await LectionarySession.bibleVersions()
+        let pair = LectionarySession.textSource(
+            selection: readings.bibleVersionID(for: selected.language),
+            versions: versions
+        )
+        page = await TodayPageBuilder.load(
+            date: CivilDate(Date()),
+            calendar: selected,
+            lectionary: lectionary,
+            bible: pair.bible,
+            source: pair.source,
+            fallback: seedFallback
+        )
+    }
+
+    private func refreshCalendar() {
+        let root = DevotionLibrary.applicationSupport
+        let installed = CalendarCatalog.installed(
+            ids: packs.ids,
+            catalog: PackFiles.loadCatalog(root: root)?.packs ?? [],
+            root: root
+        )
+        cachedCalendar = CalendarCatalog.selection(
+            storedID: readings.calendarID,
+            in: CalendarCatalog.list(installed: installed)
+        )
     }
 
     private var forLater: some View {
@@ -96,24 +150,46 @@ struct TodayView: View {
         }
     }
 
+    @ViewBuilder
     private func readingRow(_ reading: TodayReading) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
-            Text(reading.label)
-                .font(AppFont.interface(size: 15))
-                .foregroundStyle(palette.mutedForeground.color)
-                .layoutPriority(1)
-            if !reading.reference.isEmpty {
-                Text(reading.reference)
-                    .font(AppFont.interface(size: 15, weight: .semibold))
-                    .foregroundStyle(palette.foreground.color)
-                    .multilineTextAlignment(.trailing)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .fixedSize(horizontal: false, vertical: true)
+        if reading.opensReadings {
+            Button {
+                navigation.tab = .readings
+            } label: {
+                HStack {
+                    Text(reading.label)
+                        .font(AppFont.interface(size: 15, weight: .semibold))
+                        .foregroundStyle(palette.primary.color)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(palette.primary.color)
+                }
+                .padding(.vertical, 12)
+                .frame(minHeight: ControlMetrics.minimumHeight, alignment: .center)
             }
+            .buttonStyle(PressScaleButtonStyle())
+            .accessibilityLabel(reading.label)
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                Text(reading.label)
+                    .font(AppFont.interface(size: 15))
+                    .foregroundStyle(palette.mutedForeground.color)
+                    .layoutPriority(1)
+                if !reading.reference.isEmpty {
+                    Text(reading.reference)
+                        .font(AppFont.interface(size: 15, weight: .semibold))
+                        .foregroundStyle(palette.foreground.color)
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.vertical, 12)
+            .frame(minHeight: ControlMetrics.minimumHeight, alignment: .center)
+            .accessibilityElement(children: .combine)
         }
-        .padding(.vertical, 12)
-        .frame(minHeight: ControlMetrics.minimumHeight, alignment: .center)
-        .accessibilityElement(children: .combine)
     }
 
     private func sectionHeader(_ title: String, action: @escaping () -> Void, link: () -> String) -> some View {
@@ -220,13 +296,10 @@ struct TodayView: View {
     }
 }
 
-private enum TodayLibrary {
-    static let lectionary = Lectionary.load()
-}
-
 #Preview {
     TodayView()
         .modelContainer(try! HymnStore.make(inMemory: true))
+        .environment(ReadingsPreferences(defaults: UserDefaults(suiteName: "today-preview") ?? .standard))
         .environment(DesignPreferences())
         .environment(AppNavigation())
         .environment(InstalledPacks(defaults: UserDefaults(suiteName: "today-preview") ?? .standard))

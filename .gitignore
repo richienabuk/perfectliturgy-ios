@@ -11,3 +11,6 @@ PerfectLiturgy/Hymns/Catalogues/
 
 # Production devotion texts. Fixture packs stay in git.
 PerfectLiturgy/Devotions/Catalogues/
+
+# Production calendar packs from the server (lectionary wording, Bible text). Placeholder fixtures stay in git.
+docs/response_*.json

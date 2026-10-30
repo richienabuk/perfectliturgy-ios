@@ -29,8 +29,17 @@ struct PerfectLiturgyApp: App {
     init() {
         AppFonts.register()
         AppChrome.apply()
+        _ = BibleStore.shared
         let design = DesignPreferences()
         let packs = InstalledPacks()
+        BibleStore.reconcileInstalled(packs: packs, defaults: .standard)
+        let root = DevotionLibrary.applicationSupport
+        CalendarPackReader.reconcileInstalled(
+            packs: packs,
+            defaults: .standard,
+            root: root,
+            catalog: PackFiles.loadCatalog(root: root)?.packs ?? []
+        )
         let session = AppSession()
         _design = State(initialValue: design)
         _packs = State(initialValue: packs)

@@ -42,12 +42,30 @@ import Testing
     #expect(auth == "https://perfectliturgyapi.richienabuk.top")
 }
 
+@Test func `pack metadata keeps coverage and region and drops the display window`() throws {
+    let data = Data("""
+    {"pack_id":"readings-rsv","type":"readings","display_name":"RSV","revision":"1","mode":"live","language":"en",
+     "metadata":{"versification":"lectionary","coverage_through":"2026-12-31","region":"us","display_window":"2026-01-01/2026-12-31"}}
+    """.utf8)
+    let decoder = JSONDecoder()
+    decoder.keyDecodingStrategy = .convertFromSnakeCase
+    let pack = try decoder.decode(PackRecord.self, from: data)
+    #expect(pack.metadata?.versification == "lectionary")
+    #expect(pack.metadata?.coverageThrough == "2026-12-31")
+    #expect(pack.metadata?.region == "us")
+    #expect(PackCoverage.text("2026-12-31") == "31 December 2026")
+    let encoded = try JSONEncoder().encode(pack.metadata)
+    let raw = try #require(String(data: encoded, encoding: .utf8))
+    #expect(!raw.contains("displayWindow"))
+    #expect(!raw.contains("display_window"))
+}
+
 @Test func `downloads list the live catalog, and the english and latin seeds when it cannot`() async throws {
     let live = Data("""
     {"data":[
-      {"pack_id":"readings-rsv","type":"readings","display_name":"RSV","revision":"2026-01-01T00:00:00.000Z","size":1200000,"requires_sign_in":false,"mode":"live","language":"en"},
+      {"pack_id":"readings-rsv","type":"readings","display_name":"RSV","revision":"2026-01-01T00:00:00.000Z","size":1200000,"requires_sign_in":false,"mode":"live","language":"en","metadata":{"versification":"lectionary","coverage_through":"2026-12-31"}},
       {"pack_id":"hymns-efi","type":"hymns","display_name":"Efik Hymns","revision":"","mode":"live","language":"efi","language_name":"Efik"},
-      {"pack_id":"calendar-nigeria","type":"calendar","language":"ng","display_name":"Nigeria","revision":"2026-01-01T00:00:00.000Z","requires_sign_in":true,"mode":"download"}
+      {"pack_id":"calendar-nigeria","type":"calendar","language":"ng","display_name":"Nigeria","revision":"2026-01-01T00:00:00.000Z","requires_sign_in":true,"mode":"download","metadata":{"region":"ng"}}
     ],"page":1,"pageSize":3,"total":3}
     """.utf8)
     let root = try temporaryPackRoot()
@@ -57,6 +75,8 @@ import Testing
     #expect(listed.first { $0.packId == "hymns-efi" }?.languageName == "Efik")
     #expect(listed.contains { $0.packId == "hymns-efi" })
     #expect(listed.first { $0.packId == "hymns-efi" }?.requiresSignIn == true)
+    #expect(listed.first { $0.packId == "readings-rsv" }?.metadata?.coverageThrough == "2026-12-31")
+    #expect(listed.first { $0.packId == "calendar-nigeria" }?.metadata?.region == "ng")
     #expect(PackSize.text(1_200_000) == "1.2 MB")
     let titles = PackSections.group(listed).map(\.title)
     #expect(titles == ["Daily Readings", "Calendars", "Hymns"])
@@ -125,7 +145,7 @@ import Testing
         requiresSignIn: false,
         mode: "live"
     )
-    try PackInstaller.remove(pack, context: context, packs: packs, supportRoot: root, defaults: defaults)
+    try await PackInstaller.remove(pack, context: context, packs: packs, supportRoot: root, defaults: defaults)
     #expect(!packs.contains("hymns-en"))
     #expect(!visibleHymns(in: context, packs: packs).contains { $0.language == "en" })
 
@@ -241,7 +261,7 @@ import Testing
     }
     #expect(parts.first?.title == "Test part")
     #expect(parts.first?.items.first?.text == "Test prayer one")
-    try PackInstaller.remove(pack, context: container.mainContext, packs: packs, supportRoot: root, defaults: defaults)
+    try await PackInstaller.remove(pack, context: container.mainContext, packs: packs, supportRoot: root, defaults: defaults)
     #expect(!packs.contains("order-en"))
     #expect(!FileManager.default.fileExists(atPath: PackFiles.file(for: "order-en", root: root).path))
 }

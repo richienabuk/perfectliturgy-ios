@@ -25,8 +25,8 @@ Bundle id `com.perfectliturgy`. Display name PerfectLiturgy. iOS 17. SwiftUI.
 | Signed out | Bundled English and Latin content opens with no Account. |
 | Hymn updates | A newer live hymn pack downloads only while signed in. Signed out, the app shows a banner and keeps the copy already on the device. |
 | Other languages | Downloading or syncing any pack that is not the bundled English or Latin set requires an Account when `requires_sign_in` is true. An omitted flag means gated. |
-| Readings | Each translation is its own pack. `display_window` is `day`, `week`, or `month`. Verse text is stored only inside that window. Outside it, the screen shows the reference. |
-| Calendar | The Roman rite is calculated on the device. A country pack replaces the celebration on the dates it marks. Reading slots stay Roman. |
+| Readings | Each translation is its own pack. Every verse in the pack is stored, and `coverage_through` says how far the pack goes. A reading whose verses are not all stored shows its reference and a note. |
+| Calendar | The General Roman Calendar is calculated on the device, and the calendar is called Latin Rite. A calendar pack (`calendar-{id}`) replaces the celebration on the dates it marks, and adds its own lectionary, headings, and formulas in its language. Reading slots come from the lectionary data, not from code. When a calendar pack includes its own text for a reading, that text is shown in place of the Bible text. |
 | Mass Times | `https://mass-times.perfectliturgy.com` in a Safari view controller. No map and no schedule inside the app. |
 | Donate | `https://perfectliturgy.com/donate` in a Safari view controller. |
 | Account | One Account for this app, Android, and the web. Google, Apple, and email magic link. |
@@ -45,9 +45,9 @@ Four stores. Pick the one that matches the lifetime of the data.
 
 | Store | Keeps | Survives |
 | :--- | :--- | :--- |
-| App bundle | Seed JSON, `lectionary.json`, station images `station-01.webp` through `station-14.webp`, fonts | Reinstall replaces it |
+| App bundle | Seed JSON, `lectionary.json` and `lectionary-latin-rite.json`, station images `station-01.webp` through `station-14.webp`, fonts | Reinstall replaces it |
 | SwiftData | Hymns and sections, bookmarks, Bible verses, Bible versions | Relaunch, until the user removes the pack |
-| Application Support | Downloaded Order of Mass, Rosary, Litanies, Stations, Prayers, and country-calendar JSON, plus the last pack catalog | Relaunch. Remove deletes that file |
+| Application Support | Downloaded Order of Mass, Rosary, Litanies, Stations, Prayers, and calendar pack JSON (`calendar-{id}`), plus the last pack catalog | Relaunch. Remove deletes that file |
 | UserDefaults | Installed pack ids, stored revisions, appearance, heading scale, body scale, auto sync, chosen Bible version, chosen calendar, last 8 hymn visits | Relaunch |
 | Keychain | Session token | Relaunch and reinstall of the same bundle id, until sign-out |
 
@@ -80,6 +80,8 @@ Search key is the accent-folded lowercase join of title, first line, and lyrics.
 ## Liturgical calendar
 
 Calculate the General Roman Calendar on the device. No country calendar is bundled. Optional memorials are omitted, so a weekday that only has a memorial shows the seasonal week.
+
+The lectionary is data, not code. The bundled Latin Rite seed (`lectionary-latin-rite.json`) gives the citations for each day. A downloaded calendar pack adds its own headings, closings, and phrases in its language. The app looks up a day's items by its day key in the active calendar and reads each item's `slot`. No slot list is fixed in code.
 
 ### Easter and the seasons
 
@@ -204,9 +206,9 @@ Uppercase date eyebrow, `EEEE · d MMMM yyyy`. Heading "Readings and Hymns for M
 
 ### Readings
 
-Chips: Today, Tomorrow, Sunday, Past dates. Previous and next day. A month sheet picks a date. An options block chooses the Bible version and the liturgical calendar. With no stored version, the row says none is available yet and opens Downloads. "Manage Bible versions" opens Downloads. The calendar list is the built-in Roman calendar plus each installed country calendar. Passages are label, reference, and text when the local Bible is complete for that slot.
+Chips: Today, Tomorrow, Sunday, Past dates. Previous and next day. A month sheet picks a date. An options block chooses the Bible version and the liturgical calendar. With no stored version, the row says none is available yet and opens Downloads. "Manage Bible versions" opens Downloads. The calendar list is the built-in Latin Rite calendar plus each installed calendar pack. Passages are label, reference, and text when the local Bible is complete for that slot.
 
-`metadata.display_window` is `day`, `week`, or `month`. Sync stores verse text for that window around the anchor. A week is Sunday through Saturday. A month is every day of the anchor's month. Dates outside the window keep references.
+Sync stores every verse a readings pack sends. `metadata.coverage_through` is informational: Downloads shows "Readings available through …" from it. A reading whose verses are not all stored shows its reference and a note, and no partial text.
 
 ### Hymns
 
@@ -397,7 +399,7 @@ Phase 5 only. Downloads from docs/mobile-app-brief.md and the catalog and downlo
 **Prompt:**
 
 ```text
-Phase 6 only. Apply readings packs into the local Bible and country calendars from docs/mobile-app-brief.md. Verse text only when every cited verse is stored and the date is inside display_window. Today stays references only. Read the readings and calendar sections of docs/api-mobile-packs.md, plus DESIGN.md and GLOSSARY.md.
+Phase 6 only. Apply readings packs into the local Bible and country calendars from docs/mobile-app-brief.md. Verse text only when every cited verse is stored. Today stays references only. Read the readings and calendar sections of docs/api-mobile-packs.md, plus DESIGN.md and GLOSSARY.md.
 ```
 
 ### Phase 7 — Account

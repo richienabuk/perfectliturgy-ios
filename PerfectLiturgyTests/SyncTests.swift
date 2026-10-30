@@ -5,15 +5,15 @@ import Testing
 import UserNotifications
 @testable import PerfectLiturgy
 
-@Test func `a hymn delta and a readings delta apply once`() async throws {
+@Test func `a hymn delta applies once and readings sync pages until the cursor ends`() async throws {
     let container = try HymnStore.make(inMemory: true)
+    let bible = try BibleStore.make(inMemory: true)
     let context = container.mainContext
     let defaults = try #require(UserDefaults(suiteName: "sync-\(UUID().uuidString)"))
     let packs = InstalledPacks(defaults: defaults)
     packs.install("hymns-en")
     packs.install("readings-test")
     packs.install("order-en")
-    let anchor = CivilDate(year: 2026, month: 10, day: 18)
     let hymns = PackRecord(
         packId: "hymns-en",
         type: "hymns",
@@ -30,8 +30,7 @@ import UserNotifications
         displayName: "Test version",
         revision: "rev-1",
         requiresSignIn: true,
-        mode: "live",
-        metadata: PackMetadata(displayWindow: "week")
+        mode: "live"
     )
     let order = PackRecord(
         packId: "order-en",
@@ -42,12 +41,11 @@ import UserNotifications
         mode: "download"
     )
     try HymnImporter.importData(originalHymn, into: context)
-    try BibleLibrary.importPack(originalReadings, pack: readings, into: context, anchor: anchor)
     PackFiles.storeRevision("rev-1", for: "hymns-en", defaults: defaults)
     PackFiles.storeRevision("rev-1", for: "readings-test", defaults: defaults)
     let installed: Set<String> = ["hymns-en", "readings-test", "order-en"]
     let root = FileManager.default.temporaryDirectory.appending(path: "sync-\(UUID().uuidString)", directoryHint: .isDirectory)
-    let transport = SyncScript(bodies: [hymnDelta, readingsDelta, hymnQuiet, readingsQuiet])
+    let transport = SyncScript(bodies: [hymnDelta, readingsPage1, readingsPage2, hymnQuiet, readingsQuiet])
     let client = PackClient(transport: transport, apiBase: URL(string: "https://api.example.test")!, token: "session-1")
     var merged = 0
     let first = await ContentSync.run(
@@ -58,29 +56,31 @@ import UserNotifications
         packs: packs,
         supportRoot: root,
         defaults: defaults,
-        mergeBookmarks: { merged += 1 },
-        anchor: anchor
+        bibleContainer: bible,
+        mergeBookmarks: { merged += 1 }
     )
     #expect(first.outcome == .current)
     #expect(merged == 1)
     let revised = try #require(HymnImporter.record(id: "test-en-1", in: context))
     #expect(revised.title == "Test hymn one revised")
     #expect(try context.fetchCount(FetchDescriptor<HymnRecord>()) == 1)
-    #expect(try BibleLibrary.count(translation: "test", in: context) == 9)
-    let verse = BiblePassage.text(
-        reference: "Isaiah 7:14",
-        translation: "test",
-        on: anchor,
-        window: "week",
-        anchor: anchor,
-        in: context
-    )
-    #expect(verse == "Test verse revised")
-    #expect(transport.requests.count == 2)
-    #expect(transport.requests.allSatisfy { $0.url?.path.contains("/sync") == true })
-    #expect(transport.requests.allSatisfy { $0.url?.path.contains("order-en") == false })
-    #expect(transport.requests.allSatisfy { since($0) == "rev-1" })
+    #expect(transport.requests.count == 3)
+    #expect(transport.requests[0].url?.path == "/v1/packs/hymns-en/sync")
+    #expect(since(transport.requests[0]) == "rev-1")
     #expect(transport.requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer session-1")
+    #expect(transport.requests[1].url?.path == "/v1/packs/readings-test/sync")
+    #expect(cursor(transport.requests[1]) == nil)
+    #expect(cursor(transport.requests[2]) == "cursor-2")
+    #expect(PackFiles.revision(for: "readings-test", defaults: defaults) == "rev-3")
+    let verses = try await BibleReader(modelContainer: bible).verses(
+        versionID: "test",
+        bookID: "ISA",
+        fromChapter: 7,
+        fromVerse: 14,
+        toChapter: 7,
+        toVerse: 15
+    )
+    #expect(verses.map(\.text) == ["Test narration.", "Test verse two"])
 
     let second = await ContentSync.run(
         installed: installed,
@@ -90,28 +90,21 @@ import UserNotifications
         packs: packs,
         supportRoot: root,
         defaults: defaults,
-        mergeBookmarks: { merged += 1 },
-        anchor: anchor
+        bibleContainer: bible,
+        mergeBookmarks: { merged += 1 }
     )
     #expect(second.outcome == .current)
     #expect(HymnImporter.record(id: "test-en-1", in: context)?.title == "Test hymn one revised")
     #expect(try context.fetchCount(FetchDescriptor<HymnRecord>()) == 1)
-    #expect(try BibleLibrary.count(translation: "test", in: context) == 9)
-    #expect(BiblePassage.text(
-        reference: "Isaiah 7:14",
-        translation: "test",
-        on: anchor,
-        window: "week",
-        anchor: anchor,
-        in: context
-    ) == "Test verse revised")
-    #expect(transport.requests.count == 4)
-    #expect(transport.requests.dropFirst(2).allSatisfy { since($0) == "rev-2" })
+    #expect(transport.requests.count == 5)
+    #expect(since(transport.requests[3]) == "rev-2")
+    #expect(since(transport.requests[4]) == "rev-3")
     #expect(transport.requests.allSatisfy { $0.url?.path.contains("/download") == false })
 }
 
 @Test func `sync updates only downloaded hymns and daily readings`() async throws {
     let container = try HymnStore.make(inMemory: true)
+    let bible = try BibleStore.make(inMemory: true)
     let defaults = try #require(UserDefaults(suiteName: "sync-download-\(UUID().uuidString)"))
     let packs = InstalledPacks(defaults: defaults)
     let installed = [
@@ -123,6 +116,7 @@ import UserNotifications
     PackFiles.storeRevision("rev-1", for: "readings-rsvce", defaults: defaults)
     PackFiles.storeRevision("rev-1", for: "order-en", defaults: defaults)
     PackFiles.storeRevision("rev-1", for: "prayers-en", defaults: defaults)
+    PackFiles.storeRevision("rev-9", for: "calendar-us", defaults: defaults)
     let catalog = [
         live("hymns-en", type: "hymns"),
         live("hymns-la", type: "hymns"),
@@ -135,7 +129,7 @@ import UserNotifications
         downloadOnly("prayers-en", type: "prayers"),
         downloadOnly("calendar-us", type: "calendar"),
     ]
-    let transport = SyncScript(bodies: [hymnQuiet, readingsQuiet])
+    let transport = SyncScript(bodies: [hymnQuiet, readingsQuietRSVCE])
     let client = PackClient(transport: transport, apiBase: URL(string: "https://api.example.test")!, token: "session-1")
     let report = await ContentSync.run(
         installed: Set(installed),
@@ -145,6 +139,7 @@ import UserNotifications
         packs: packs,
         supportRoot: FileManager.default.temporaryDirectory,
         defaults: defaults,
+        bibleContainer: bible,
         mergeBookmarks: {}
     )
     #expect(report.outcome == .current)
@@ -153,6 +148,68 @@ import UserNotifications
     #expect(paths == ["/v1/packs/hymns-en/sync", "/v1/packs/readings-rsvce/sync"])
     #expect(transport.requests.allSatisfy { $0.url?.path.contains("/download") == false })
     #expect(transport.requests.allSatisfy { since($0) == "rev-1" })
+}
+
+@Test func `sync re-downloads a calendar when the catalog revision moves`() async throws {
+    let container = try HymnStore.make(inMemory: true)
+    let bible = try BibleStore.make(inMemory: true)
+    let defaults = try #require(UserDefaults(suiteName: "sync-calendar-\(UUID().uuidString)"))
+    let packs = InstalledPacks(defaults: defaults)
+    packs.install("calendar-test")
+    packs.install("hymns-en")
+    PackFiles.storeRevision("rev-1", for: "calendar-test", defaults: defaults)
+    PackFiles.storeRevision("rev-1", for: "hymns-en", defaults: defaults)
+    let root = FileManager.default.temporaryDirectory
+        .appending(path: "sync-cal-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let old = Data("""
+    {"pack_id":"calendar-test","type":"calendar","language":"en","revision":"rev-1",
+     "display_name":"Test calendar","metadata":{"region":"test"},
+     "data":{"days":[{"id":"test-patron","title":"Test patron","color":"red","month":10,"day":18}],
+      "formulas":{},"sunday":{},"feria":{},"proper":{}}}
+    """.utf8)
+    try PackFiles.ensureFolder(root)
+    try old.write(to: PackFiles.file(for: "calendar-test", root: root), options: .atomic)
+
+    let calendar = PackRecord(
+        packId: "calendar-test",
+        type: "calendar",
+        language: "en",
+        displayName: "Test calendar",
+        revision: "rev-2",
+        requiresSignIn: false,
+        mode: "download",
+        metadata: PackMetadata(region: "test")
+    )
+    let hymns = live("hymns-en", type: "hymns")
+    let updated = Data("""
+    {"pack_id":"calendar-test","type":"calendar","language":"en","revision":"rev-2",
+     "display_name":"Test calendar","metadata":{"region":"test"},
+     "data":{"days":[{"id":"test-patron","title":"Test patron revised","color":"red","month":10,"day":18}],
+      "formulas":{},"sunday":{},"feria":{},"proper":{}}}
+    """.utf8)
+    let transport = SyncScript(bodies: [hymnQuiet, updated])
+    let client = PackClient(transport: transport, apiBase: URL(string: "https://api.example.test")!, token: "session-1")
+    let report = await ContentSync.run(
+        installed: ["calendar-test", "hymns-en"],
+        catalog: [hymns, calendar],
+        client: client,
+        context: container.mainContext,
+        packs: packs,
+        supportRoot: root,
+        defaults: defaults,
+        bibleContainer: bible,
+        mergeBookmarks: {}
+    )
+    #expect(report.outcome == .current)
+    #expect(transport.requests.map { $0.url?.path } == [
+        "/v1/packs/hymns-en/sync",
+        "/v1/packs/calendar-test/download",
+    ])
+    #expect(PackFiles.revision(for: "calendar-test", defaults: defaults) == "rev-2")
+    let loaded = try CalendarPackReader.decode(Data(contentsOf: PackFiles.file(for: "calendar-test", root: root)))
+    #expect(loaded.revision == "rev-2")
+    #expect(loaded.days.map(\.title) == ["Test patron revised"])
 }
 
 @Test func `sync waits for a session before it starts`() async throws {
@@ -324,6 +381,13 @@ private func since(_ request: URLRequest) -> String? {
         .value
 }
 
+private func cursor(_ request: URLRequest) -> String? {
+    URLComponents(url: request.url ?? URL(string: "https://api.example.test")!, resolvingAgainstBaseURL: false)?
+        .queryItems?
+        .first { $0.name == "cursor" }?
+        .value
+}
+
 private final class SyncScript: PackTransport {
     var bodies: [Data]
     var requests: [URLRequest] = []
@@ -359,28 +423,25 @@ private let hymnQuiet = Data("""
 {"revision":"rev-2","data":[]}
 """.utf8)
 
-private let originalReadings = Data("""
-{"revision":"rev-0","metadata":{"display_window":"week"},"data":[
-  {"book":"Isa","chapter":7,"verse":14,"text":"Test verse one","date":"2026-10-18"},
-  {"book":"Isaiah","chapter":7,"verse":14,"text":"Test verse one","date":"2026-10-19"},
-  {"book":"Isa","chapter":7,"verse":15,"text":"Test verse two","date":"2026-10-18"},
-  {"book":"Isa","chapter":7,"verse":16,"text":"Test verse three","date":"2026-11-01"},
-  {"book":"Matt","chapter":22,"verse":15,"text":"Test verse one","date":"2026-10-18"},
-  {"book":"Matt","chapter":22,"verse":16,"text":"Test verse one","date":"2026-10-18"},
-  {"book":"Matt","chapter":22,"verse":17,"text":"Test verse one","date":"2026-10-18"},
-  {"book":"Matt","chapter":22,"verse":18,"text":"Test verse one","date":"2026-10-18"},
-  {"book":"Matt","chapter":22,"verse":19,"text":"Test verse one","date":"2026-10-18"},
-  {"book":"Matt","chapter":22,"verse":20,"text":"Test verse one","date":"2026-10-18"},
-  {"book":"Matt","chapter":22,"verse":21,"text":"Test verse one","date":"2026-10-19"}
-]}
+private let readingsPage1 = Data("""
+{"pack_id":"readings-test","type":"readings","language":"en","revision":"rev-3",
+ "metadata":{"versification":"lectionary"},
+ "books":[{"id":"ISA","order":23,"name":"Isaiah","abbr":"Isa"}],
+ "data":[{"book":"ISA","chapter":7,"verse":14,"text":"Test narration.",
+   "updated_at":"2026-10-19T12:00:00Z","deleted_at":null}],
+ "next_cursor":"cursor-2"}
 """.utf8)
 
-private let readingsDelta = Data("""
-{"revision":"rev-2","metadata":{"display_window":"week"},"data":[
-  {"book":"Isa","chapter":7,"verse":14,"text":"Test verse revised","date":"2026-10-18"}
-]}
+private let readingsPage2 = Data("""
+{"pack_id":"readings-test","type":"readings","language":"en","revision":"rev-3",
+ "data":[{"book":"ISA","chapter":7,"verse":15,"text":"Test verse two",
+   "updated_at":"2026-10-19T12:00:01Z","deleted_at":null}]}
 """.utf8)
 
 private let readingsQuiet = Data("""
-{"revision":"rev-2","metadata":{"display_window":"week"},"data":[]}
+{"pack_id":"readings-test","type":"readings","language":"en","revision":"rev-3","data":[]}
+""".utf8)
+
+private let readingsQuietRSVCE = Data("""
+{"pack_id":"readings-rsvce","type":"readings","language":"en","revision":"rev-2","data":[]}
 """.utf8)

@@ -5,6 +5,7 @@ struct DownloadsView: View {
     @Environment(InstalledPacks.self) private var packs
     @Environment(AppSession.self) private var session
     @Environment(AppNavigation.self) private var navigation
+    @Environment(ReadingsPreferences.self) private var readings
     @Environment(\.palette) private var palette
     @Environment(\.isWideLayout) private var isWide
     @Environment(\.modelContext) private var modelContext
@@ -168,6 +169,11 @@ struct DownloadsView: View {
         } else {
             parts.append("Not installed")
         }
+        if pack.type == "readings",
+           let through = pack.metadata?.coverageThrough,
+           !through.isEmpty {
+            parts.append("Readings available through \(PackCoverage.text(through)).")
+        }
         return parts.joined(separator: " · ")
     }
 
@@ -201,6 +207,9 @@ struct DownloadsView: View {
         switch result {
         case .installed:
             notes[pack.packId] = nil
+            if pack.type == "calendar" {
+                readings.noteCalendarInstalled(pack.packId, installedIDs: packs.ids)
+            }
         case .needsSignIn:
             showsSignIn = true
         case .unavailable:
@@ -212,13 +221,18 @@ struct DownloadsView: View {
 
     private func remove(_ pack: PackRecord) {
         notes[pack.packId] = nil
-        try? PackInstaller.remove(
-            pack,
-            context: modelContext,
-            packs: packs,
-            supportRoot: DevotionLibrary.applicationSupport,
-            defaults: .standard
-        )
+        Task {
+            try? await PackInstaller.remove(
+                pack,
+                context: modelContext,
+                packs: packs,
+                supportRoot: DevotionLibrary.applicationSupport,
+                defaults: .standard
+            )
+            if pack.type == "calendar" {
+                readings.noteCalendarRemoved(pack.packId, remainingIDs: packs.ids)
+            }
+        }
     }
 
     private var client: PackClient {

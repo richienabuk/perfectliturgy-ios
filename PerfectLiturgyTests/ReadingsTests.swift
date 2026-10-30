@@ -5,8 +5,8 @@ import Testing
 import UIKit
 @testable import PerfectLiturgy
 
-@Test func `tomorrow sunday and a past date show the celebration and references`() {
-    let index = Lectionary.load()
+@Test func `tomorrow sunday and a past date show the celebration and references`() async throws {
+    let seed = try loadReadingsSeed()
     let saturday = CivilDate(year: 2026, month: 10, day: 24)
     var cursor = ReadingsCursor(today: saturday)
 
@@ -14,7 +14,13 @@ import UIKit
     #expect(cursor.date == CivilDate(year: 2026, month: 10, day: 25))
     #expect(cursor.showsTomorrow)
     #expect(cursor.showsSunday)
-    let tomorrow = TodayPageBuilder.page(for: cursor.date, lectionary: index)
+    let tomorrow = await TodayPageBuilder.load(
+        date: cursor.date,
+        calendar: .latinRite,
+        lectionary: seed,
+        bible: nil,
+        source: .bible(versionID: "test")
+    )
     #expect(tomorrow.title == "30th Sunday in Ordinary Time")
     #expect(tomorrow.weekMark == "XXX")
     #expect(tomorrow.readings.map(\.reference) == [
@@ -30,7 +36,13 @@ import UIKit
     #expect(midweek.date == CivilDate(year: 2026, month: 10, day: 25))
     #expect(midweek.showsSunday)
     #expect(!midweek.showsTomorrow)
-    let sunday = TodayPageBuilder.page(for: midweek.date, lectionary: index)
+    let sunday = await TodayPageBuilder.load(
+        date: midweek.date,
+        calendar: .latinRite,
+        lectionary: seed,
+        bible: nil,
+        source: .bible(versionID: "test")
+    )
     #expect(sunday.title == tomorrow.title)
     #expect(sunday.readings.map(\.reference) == tomorrow.readings.map(\.reference))
 
@@ -39,7 +51,13 @@ import UIKit
     #expect(pastDate == CivilDate(year: 2026, month: 10, day: 18))
     cursor.choose(pastDate ?? CivilDate(year: 2026, month: 10, day: 18))
     #expect(cursor.showsPast)
-    let past = TodayPageBuilder.page(for: cursor.date, lectionary: index)
+    let past = await TodayPageBuilder.load(
+        date: cursor.date,
+        calendar: .latinRite,
+        lectionary: seed,
+        bible: nil,
+        source: .bible(versionID: "test")
+    )
     #expect(past.title == "29th Sunday in Ordinary Time")
     #expect(past.weekMark == "XXIX")
     #expect(past.readings.map(\.label) == [
@@ -58,11 +76,18 @@ import UIKit
     ])
 }
 
-@Test func `previous and next day move one civil day`() {
+@Test func `previous and next day move one civil day`() async throws {
     var cursor = ReadingsCursor(today: CivilDate(year: 2026, month: 10, day: 31))
     cursor.step(by: 1)
     #expect(cursor.date == CivilDate(year: 2026, month: 11, day: 1))
-    let page = TodayPageBuilder.page(for: cursor.date, lectionary: Lectionary.load())
+    let seed = try loadReadingsSeed()
+    let page = await TodayPageBuilder.load(
+        date: cursor.date,
+        calendar: .latinRite,
+        lectionary: seed,
+        bible: nil,
+        source: .bible(versionID: "test")
+    )
     #expect(page.title == "All Saints")
     cursor.step(by: -1)
     #expect(cursor.showsToday)
@@ -80,6 +105,43 @@ import UIKit
     #expect(october.advanced(by: -1).month == 9)
 }
 
+@Test func `readings dates stop at one month behind and two months ahead`() {
+    let today = CivilDate(year: 2026, month: 10, day: 15)
+    #expect(ReadingsDateWindow.earliest(from: today) == CivilDate(year: 2026, month: 9, day: 15))
+    #expect(ReadingsDateWindow.latest(from: today) == CivilDate(year: 2026, month: 12, day: 15))
+    #expect(ReadingsDateWindow.contains(CivilDate(year: 2026, month: 9, day: 15), today: today))
+    #expect(!ReadingsDateWindow.contains(CivilDate(year: 2026, month: 9, day: 14), today: today))
+    #expect(ReadingsDateWindow.contains(CivilDate(year: 2026, month: 12, day: 15), today: today))
+    #expect(!ReadingsDateWindow.contains(CivilDate(year: 2026, month: 12, day: 16), today: today))
+
+    var cursor = ReadingsCursor(today: today)
+    cursor.choose(CivilDate(year: 2026, month: 9, day: 14))
+    #expect(cursor.date == CivilDate(year: 2026, month: 9, day: 15))
+    cursor.choose(CivilDate(year: 2026, month: 12, day: 16))
+    #expect(cursor.date == CivilDate(year: 2026, month: 12, day: 15))
+    cursor.choose(CivilDate(year: 2026, month: 9, day: 15))
+    #expect(!cursor.canStepBack)
+    cursor.step(by: -1)
+    #expect(cursor.date == CivilDate(year: 2026, month: 9, day: 15))
+    cursor.choose(CivilDate(year: 2026, month: 12, day: 15))
+    #expect(!cursor.canStepForward)
+    cursor.step(by: 1)
+    #expect(cursor.date == CivilDate(year: 2026, month: 12, day: 15))
+
+    let september = MonthPage(year: 2026, month: 9, firstWeekday: 1)
+    let december = MonthPage(year: 2026, month: 12, firstWeekday: 1)
+    let august = MonthPage(year: 2026, month: 8, firstWeekday: 1)
+    let january = MonthPage(year: 2027, month: 1, firstWeekday: 1)
+    #expect(september.overlapsWindow(today: today))
+    #expect(december.overlapsWindow(today: today))
+    #expect(!august.overlapsWindow(today: today))
+    #expect(!january.overlapsWindow(today: today))
+    #expect(!september.canAdvance(by: -1, today: today))
+    #expect(!december.canAdvance(by: 1, today: today))
+    #expect(september.canAdvance(by: 1, today: today))
+    #expect(december.canAdvance(by: -1, today: today))
+}
+
 @Test func `with no bible version the row says none is available yet`() {
     let status = BibleVersionStatus.resolve([], selectedID: nil)
     #expect(status.line == "None is available yet.")
@@ -93,7 +155,7 @@ import UIKit
     #expect(!stored.opensDownloads)
 }
 
-@Test func `the calendar list is roman plus each installed country calendar`() {
+@Test func `the calendar list is Latin Rite plus each installed calendar`() async throws {
     let patron = CountryCelebration(
         id: "test-patron",
         title: "Test patron",
@@ -102,39 +164,133 @@ import UIKit
         day: 18,
         year: 2026
     )
-    let installed = CalendarOption(id: "calendar-test", title: "Test calendar", celebrations: [patron])
-    let list = CalendarCatalog.list(installed: [installed, CalendarOption.roman])
-    #expect(list.map(\.id) == ["roman", "calendar-test"])
+    let installed = CalendarOption(
+        id: "calendar-test",
+        title: "Test calendar",
+        language: "en",
+        celebrations: [patron]
+    )
+    let list = CalendarCatalog.list(installed: [installed, CalendarOption.latinRite])
+    #expect(list.map(\.id) == ["latin-rite", "calendar-test"])
     #expect(CalendarCatalog.installed(ids: [], root: URL(fileURLWithPath: "/tmp/pl-no-calendars")).isEmpty)
 
-    let roman = CalendarCatalog.selection(storedID: "missing", in: list)
-    #expect(roman.id == "roman")
+    let seedOption = CalendarCatalog.selection(storedID: "missing", in: list)
+    #expect(seedOption.id == "latin-rite")
     let chosen = CalendarCatalog.selection(storedID: "calendar-test", in: list)
-    let page = TodayPageBuilder.page(
-        for: CivilDate(year: 2026, month: 10, day: 18),
-        country: chosen.celebrations,
-        lectionary: Lectionary.load()
+    let seed = try loadReadingsSeed()
+    let page = await TodayPageBuilder.load(
+        date: CivilDate(year: 2026, month: 10, day: 18),
+        calendar: chosen,
+        lectionary: seed,
+        bible: nil,
+        source: .bible(versionID: "test")
     )
     #expect(page.title == "Test patron")
     #expect(page.readings.map(\.reference).contains("Matthew 22:15-21"))
 }
 
-@Test func `the chosen calendar is remembered`() throws {
+@Test func `the chosen calendar is remembered and roman migrates to latin-rite`() throws {
     let suite = "readings-tests-\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
     defaults.removePersistentDomain(forName: suite)
     let first = ReadingsPreferences(defaults: defaults)
-    #expect(first.calendarID == "roman")
-    #expect(first.bibleVersionID == nil)
+    #expect(first.calendarID == "latin-rite")
+    #expect(first.bibleVersionID(for: "en") == nil)
     first.calendarID = "calendar-test"
     let second = ReadingsPreferences(defaults: defaults)
     #expect(second.calendarID == "calendar-test")
+
+    defaults.set("roman", forKey: "chosenCalendar")
+    defaults.set("readings-test", forKey: "chosenBibleVersion")
+    let migrated = ReadingsPreferences(defaults: defaults)
+    #expect(migrated.calendarID == "latin-rite")
+    #expect(migrated.bibleVersionID(for: "en") == "readings-test")
+    #expect(defaults.string(forKey: "chosenBibleVersion") == nil)
+    #expect(defaults.string(forKey: "chosenCalendar") == "latin-rite")
     defaults.removePersistentDomain(forName: suite)
 }
 
 @Test func `the readings date reads as a spoken day`() {
     let date = CivilDate(year: 2026, month: 10, day: 25)
     #expect(TodayPageBuilder.spokenDate(for: date) == "Sunday, 25 October 2026")
+}
+
+@Test func `a multi-Mass day adds an open readings row on Today`() async {
+    let lectionary = Lectionary(
+        id: "test",
+        language: "en",
+        displayName: "Test",
+        revision: "1",
+        formulas: LectionaryFormulas(
+            sets: ["vigil": "Test Vigil", "day": "Test Day"],
+            slots: [:],
+            bookTitles: [:],
+            acclamation: [:]
+        ),
+        sunday: [
+            "christmas|A": [
+                LectionaryItem(
+                    slot: "gospel",
+                    reference: "Test vigil gospel",
+                    ranges: [],
+                    set: "vigil",
+                    label: nil,
+                    incipit: nil,
+                    theme: nil,
+                    refrain: nil,
+                    refrainRef: nil,
+                    closing: nil,
+                    cf: false,
+                    alternatives: [],
+                    text: nil
+                ),
+                LectionaryItem(
+                    slot: "gospel",
+                    reference: "Test day gospel",
+                    ranges: [],
+                    set: "day",
+                    label: nil,
+                    incipit: nil,
+                    theme: nil,
+                    refrain: nil,
+                    refrainRef: nil,
+                    closing: nil,
+                    cf: false,
+                    alternatives: [],
+                    text: nil
+                ),
+            ],
+        ],
+        feria: [:],
+        proper: [:],
+        days: []
+    )
+    let day = LiturgicalDay(
+        id: "christmas",
+        title: "The Nativity of the Lord",
+        color: .white,
+        season: .christmas,
+        rank: .solemnity,
+        weekMark: nil,
+        fromCountryCalendar: false,
+        readingKey: "christmas|A|II"
+    )
+    let resolved = await ReadingResolver.resolve(
+        day: day,
+        lectionary: lectionary,
+        bible: nil,
+        source: .bible(versionID: "test"),
+        verses: EmptyVerseSource(),
+        includeText: false
+    )
+    let page = TodayPageBuilder.page(
+        for: CivilDate(year: 2025, month: 12, day: 25),
+        dayReadings: resolved,
+        celebrationTitle: day.title,
+        weekMark: nil
+    )
+    #expect(page.readings.last?.opensReadings == true)
+    #expect(page.readings.last?.label == "2 Masses. Open readings.")
 }
 
 @Test func `readings screen renders`() async throws {
@@ -177,6 +333,12 @@ import UIKit
     Attachment.record(sheetImage, named: "readings-sheet")
     #expect(sheetImage.size.height > 600)
     defaults.removePersistentDomain(forName: suite)
+}
+
+private func loadReadingsSeed() throws -> Lectionary {
+    let bundle = Bundle(for: DesignPreferences.self)
+    let url = try #require(bundle.url(forResource: "lectionary-latin-rite", withExtension: "json"))
+    return try LectionaryStore.decode(Data(contentsOf: url))
 }
 
 private struct ReadingsSheetPreview: View {

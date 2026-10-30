@@ -1,7 +1,7 @@
 import Foundation
 
 /// The General Roman Calendar, calculated on the device. Optional memorials are omitted.
-nonisolated enum RomanCalendar {
+nonisolated enum LatinRiteCalendar {
     static func day(on date: CivilDate, country: [CountryCelebration] = []) -> LiturgicalDay {
         let roman = romanDay(on: date)
         guard let match = country.first(where: { $0.matches(date) }) else { return roman }
@@ -43,7 +43,7 @@ nonisolated enum RomanCalendar {
     }
 }
 
-nonisolated extension RomanCalendar {
+nonisolated extension LatinRiteCalendar {
     private struct Celebration: Equatable {
         var id: String
         var title: String
@@ -92,8 +92,7 @@ nonisolated extension RomanCalendar {
             rank: celebration.rank,
             weekMark: celebration.weekMark,
             fromCountryCalendar: false,
-            readingKey: readingKey(id: celebration.id, on: date),
-            slots: slots(for: celebration.id, on: date)
+            readingKey: readingKey(id: celebration.id, on: date)
         )
     }
 
@@ -141,53 +140,9 @@ nonisolated extension RomanCalendar {
         let weekday = WeekdayCycle(liturgicalYear: year).rawValue
         return "\(id)|\(sunday)|\(weekday)"
     }
-
-    private static func slots(for id: String, on date: CivilDate) -> [ReadingSlot] {
-        var slots: [ReadingSlot] = [.first, .psalm]
-        if hasSecondReading(id: id, on: date) {
-            slots.append(.second)
-        }
-        slots.append(contentsOf: [.acclamation, .gospel])
-        return slots
-    }
-
-    private static func hasSecondReading(id: String, on date: CivilDate) -> Bool {
-        if id == "holy-saturday" { return false }
-        if date.weekday == .sunday { return true }
-        return secondReadingIDs.contains(id)
-    }
-
-    /// Days that keep a second reading even when they are not a Sunday. Ordinary weekdays omit it.
-    private static let secondReadingIDs: Set<String> = [
-        "nativity",
-        "mary-mother-of-god",
-        "epiphany",
-        "baptism",
-        "holy-family",
-        "holy-thursday",
-        "good-friday",
-        "ascension",
-        "pentecost",
-        "trinity",
-        "corpus-christi",
-        "sacred-heart",
-        "christ-the-king",
-        "presentation",
-        "transfiguration",
-        "holy-cross",
-        "lateran",
-        "joseph",
-        "annunciation",
-        "nativity-of-john",
-        "peter-and-paul",
-        "assumption",
-        "all-saints",
-        "immaculate-conception",
-        "ash-wednesday",
-    ]
 }
 
-nonisolated extension RomanCalendar {
+nonisolated extension LatinRiteCalendar {
     private static func seasonal(on date: CivilDate) -> Celebration {
         let easter = easter(year: date.year)
         let ash = easter.adding(days: -46)
@@ -484,7 +439,7 @@ nonisolated extension RomanCalendar {
     }
 }
 
-nonisolated extension RomanCalendar {
+nonisolated extension LatinRiteCalendar {
     private static func proper(on date: CivilDate) -> ProperCelebration? {
         let found = [movableProper(on: date), fixedProper(month: date.month, day: date.day)].compactMap { $0 }
         return found.max { $0.rank < $1.rank }

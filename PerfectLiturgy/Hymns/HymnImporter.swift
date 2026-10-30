@@ -526,7 +526,5 @@ enum HymnStore {
         HymnSectionRecord.self,
         Bookmark.self,
         HymnVisit.self,
-        BibleVerseRecord.self,
-        BibleVersionRecord.self,
     ])
 }

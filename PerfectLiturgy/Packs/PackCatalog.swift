@@ -103,9 +103,11 @@ nonisolated struct PackRecord: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// Type-specific catalog extras. Readings use `displayWindow` (`day`, `week`, or `month`).
+/// Type-specific catalog extras. Readings use `versification` and `coverageThrough`. Calendars use `region`.
 nonisolated struct PackMetadata: Codable, Equatable, Sendable {
-    var displayWindow: String?
+    var versification: String?
+    var coverageThrough: String?
+    var region: String?
 }
 
 struct PackListEnvelope: Decodable, Sendable {
@@ -173,6 +175,27 @@ enum PackSize {
         }
         let kilobytes = max(1, Int((Double(bytes) / 1000).rounded()))
         return "\(kilobytes) KB"
+    }
+}
+
+/// Catalog `coverage_through` dates for Downloads copy.
+enum PackCoverage {
+    static func text(_ raw: String) -> String {
+        let parts = raw.split(separator: "-")
+        guard parts.count == 3,
+              let year = Int(parts[0]),
+              let month = Int(parts[1]),
+              let day = Int(parts[2])
+        else {
+            return raw
+        }
+        let date = CivilDate(year: year, month: month, day: day)
+        let formatter = DateFormatter()
+        formatter.calendar = CivilDate.calendar
+        formatter.locale = Locale(identifier: "en_GB")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "d MMMM yyyy"
+        return formatter.string(from: date.date)
     }
 }
 
@@ -308,6 +331,14 @@ nonisolated enum PackFiles {
     static func clearRevision(for packId: String, defaults: UserDefaults) {
         var stored = defaults.dictionary(forKey: revisionsKey) as? [String: String] ?? [:]
         stored.removeValue(forKey: packId)
+        defaults.set(stored, forKey: revisionsKey)
+    }
+
+    static func clearAllReadingsRevisions(defaults: UserDefaults) {
+        var stored = defaults.dictionary(forKey: revisionsKey) as? [String: String] ?? [:]
+        for key in stored.keys where key.hasPrefix("readings-") {
+            stored.removeValue(forKey: key)
+        }
         defaults.set(stored, forKey: revisionsKey)
     }
 

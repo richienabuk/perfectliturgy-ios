@@ -66,6 +66,26 @@ _Avoid_: Hymn version, song (when meaning a Hymn), translation
 A downloadable unit of liturgy content in the mobile apps (hymns per language, readings per Bible translation, Order of Mass per language, Stations per language, or a country liturgical calendar). Each pack syncs on its own; the user installs only what they need.
 _Avoid_: Language bundle, content module
 
+**Latin Rite**:
+The name of the liturgical calendar and lectionary the app calculates and bundles as its default. Use it in the interface and in pack metadata. Calendar pack text can be in any language.
+_Avoid_: Roman Rite, Roman calendar (in the app)
+
+**Lectionary**:
+The readings, psalm, and acclamation for each day, in the language of one calendar pack, grouped into Mass sets. The bundled Latin Rite seed holds citations only. A calendar pack adds the wording.
+_Avoid_: Reading list, schedule, Bible
+
+**Mass set**:
+One Mass within a day, such as the vigil, night, dawn, or day Mass at Christmas. A Mass set chooses which Mass to read. It is not an alternative reading.
+_Avoid_: Service (reserved for Mass times), session
+
+**Alternative reading**:
+Another permitted form of one reading on the same day, such as a shorter form or a different passage. It has its own heading and theme. It is not a Mass set.
+_Avoid_: Option, variant
+
+**Acclamation phrase**:
+The short response sung or said before the Gospel verse, such as "Alleluia" or a Lent phrase. Several phrases can be offered for one season, and the user chooses one.
+_Avoid_: Refrain (the psalm response), chant
+
 **Order of Mass** (mobile apps):
 The fixed texts of the Mass in one language, edited and uploaded by Content editors, delivered as its own content pack and read offline in the app. Not the same as the projection app's parish-editable templates (see PRD §7.5).
 _Avoid_: Mass template (reserved for projection)

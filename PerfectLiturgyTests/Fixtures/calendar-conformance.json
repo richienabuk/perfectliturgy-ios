@@ -1,0 +1,313 @@
+{
+  "description": "Conformance cases for the Latin Rite calendar. Each date gives the celebration id, season, and reading key. Country cases list the country celebrations passed in. Shared with the Android app (readings plan §14).",
+  "cases": [
+    {
+      "date": "2026-10-18",
+      "expect": {
+        "id": "ot-sunday-29",
+        "title": "29th Sunday in Ordinary Time",
+        "season": "ordinary",
+        "readingKey": "ot-sunday-29|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-10-11",
+      "expect": {
+        "id": "ot-sunday-28",
+        "title": "28th Sunday in Ordinary Time",
+        "season": "ordinary",
+        "readingKey": "ot-sunday-28|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2025-10-18",
+      "expect": {
+        "id": "luke",
+        "title": "Saint Luke",
+        "season": "ordinary",
+        "readingKey": "luke|C|I",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-10-19",
+      "expect": {
+        "id": "ot-feria-29-monday",
+        "title": "Monday of the 29th week in Ordinary Time",
+        "season": "ordinary",
+        "readingKey": "ot-feria-29-monday|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2025-12-25",
+      "expect": {
+        "id": "nativity",
+        "title": "The Nativity of the Lord",
+        "season": "christmas",
+        "readingKey": "nativity|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-01-06",
+      "expect": {
+        "id": "epiphany",
+        "title": "The Epiphany of the Lord",
+        "season": "christmas",
+        "readingKey": "epiphany|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-01-04",
+      "expect": {
+        "id": "nativity-sunday-2",
+        "title": "2nd Sunday after the Nativity of the Lord",
+        "season": "christmas",
+        "readingKey": "nativity-sunday-2|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-01-11",
+      "expect": {
+        "id": "baptism",
+        "title": "The Baptism of the Lord",
+        "season": "christmas",
+        "readingKey": "baptism|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-02-18",
+      "expect": {
+        "id": "ash-wednesday",
+        "title": "Ash Wednesday",
+        "season": "lent",
+        "readingKey": "ash-wednesday|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-03-29",
+      "expect": {
+        "id": "palm-sunday",
+        "title": "Palm Sunday of the Passion of the Lord",
+        "season": "lent",
+        "readingKey": "palm-sunday|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-04-04",
+      "expect": {
+        "id": "holy-saturday",
+        "title": "Holy Saturday",
+        "season": "lent",
+        "readingKey": "holy-saturday|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-04-05",
+      "expect": {
+        "id": "easter-sunday",
+        "title": "Easter Sunday",
+        "season": "easter",
+        "readingKey": "easter-sunday|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-05-14",
+      "expect": {
+        "id": "ascension",
+        "title": "The Ascension of the Lord",
+        "season": "easter",
+        "readingKey": "ascension|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-05-17",
+      "expect": {
+        "id": "easter-sunday-7",
+        "title": "7th Sunday of Easter",
+        "season": "easter",
+        "readingKey": "easter-sunday-7|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-05-24",
+      "expect": {
+        "id": "pentecost",
+        "title": "Pentecost Sunday",
+        "season": "easter",
+        "readingKey": "pentecost|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-05-25",
+      "expect": {
+        "id": "mary-mother-of-the-church",
+        "title": "The Blessed Virgin Mary, Mother of the Church",
+        "season": "ordinary",
+        "readingKey": "mary-mother-of-the-church|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-06-04",
+      "expect": {
+        "id": "corpus-christi",
+        "title": "The Most Holy Body and Blood of Christ",
+        "season": "ordinary",
+        "readingKey": "corpus-christi|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-06-07",
+      "expect": {
+        "id": "ot-sunday-10",
+        "title": "10th Sunday in Ordinary Time",
+        "season": "ordinary",
+        "readingKey": "ot-sunday-10|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-11-01",
+      "expect": {
+        "id": "all-saints",
+        "title": "All Saints",
+        "season": "ordinary",
+        "readingKey": "all-saints|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-11-22",
+      "expect": {
+        "id": "christ-the-king",
+        "title": "Our Lord Jesus Christ, King of the Universe",
+        "season": "ordinary",
+        "readingKey": "christ-the-king|A|II",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-11-29",
+      "expect": {
+        "id": "advent-sunday-1",
+        "title": "1st Sunday of Advent",
+        "season": "advent",
+        "readingKey": "advent-sunday-1|B|I",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2024-12-08",
+      "expect": {
+        "id": "advent-sunday-2",
+        "title": "2nd Sunday of Advent",
+        "season": "advent",
+        "readingKey": "advent-sunday-2|C|I",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2024-12-09",
+      "expect": {
+        "id": "immaculate-conception",
+        "title": "The Immaculate Conception of the Blessed Virgin Mary",
+        "season": "advent",
+        "readingKey": "immaculate-conception|C|I",
+        "fromCountryCalendar": false
+      }
+    },
+    {
+      "date": "2026-10-18",
+      "expect": {
+        "id": "country-test-patron",
+        "title": "Test patron",
+        "season": "ordinary",
+        "readingKey": "ot-sunday-29|A|II",
+        "fromCountryCalendar": true
+      },
+      "country": [
+        {
+          "id": "test-patron",
+          "title": "Test patron",
+          "color": "red",
+          "month": 10,
+          "day": 18
+        }
+      ]
+    },
+    {
+      "date": "2026-10-19",
+      "expect": {
+        "id": "ot-feria-29-monday",
+        "title": "Monday of the 29th week in Ordinary Time",
+        "season": "ordinary",
+        "readingKey": "ot-feria-29-monday|A|II",
+        "fromCountryCalendar": false
+      },
+      "country": [
+        {
+          "id": "test-patron",
+          "title": "Test patron",
+          "color": "red",
+          "month": 10,
+          "day": 18
+        }
+      ]
+    },
+    {
+      "date": "2026-05-14",
+      "expect": {
+        "id": "ascension",
+        "title": "The Ascension of the Lord",
+        "season": "easter",
+        "readingKey": "ascension|A|II",
+        "fromCountryCalendar": false
+      },
+      "country": [
+        {
+          "id": "ascension",
+          "title": "The Ascension of the Lord",
+          "color": "white",
+          "month": 5,
+          "day": 17,
+          "year": 2026
+        }
+      ]
+    },
+    {
+      "date": "2026-05-17",
+      "expect": {
+        "id": "country-ascension",
+        "title": "The Ascension of the Lord",
+        "season": "easter",
+        "readingKey": "easter-sunday-7|A|II",
+        "fromCountryCalendar": true
+      },
+      "country": [
+        {
+          "id": "ascension",
+          "title": "The Ascension of the Lord",
+          "color": "white",
+          "month": 5,
+          "day": 17,
+          "year": 2026
+        }
+      ]
+    }
+  ]
+}
