@@ -320,8 +320,10 @@ struct AccountView: View {
     private func google() async {
         session.prepare(.google)
         session.isWorking = true
+        let pkce = AuthPKCE.make()
+        session.remember(pkce)
         do {
-            let url = try await WebSignIn().authenticate(client.startURL(provider: "google"))
+            let url = try await WebSignIn().authenticate(client.startURL(provider: "google", pkce: pkce))
             await session.accept(url, client: client, context: modelContext, trusted: true)
         } catch AuthError.cancelled {
             session.cancelPending()

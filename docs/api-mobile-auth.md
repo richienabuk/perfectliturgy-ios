@@ -50,11 +50,12 @@ Recommended mobile bridge (host = current `AUTH_BASE_URL`):
 | Step | URL |
 | :--- | :--- |
 | `callbackURL` sent by the app (or rewritten by the API) | `{AUTH_BASE_URL}/auth/mobile` |
-| Bridge page redirects to | `perfectliturgy://auth?session_token=<token>` |
+| Bridge page redirects to | `perfectliturgy://auth?code=<one-time>&state=<app-state>` |
+| App exchanges the code | `POST {AUTH_BASE_URL}/auth/mobile/token` |
 
 Examples: `https://api.perfectliturgy.com/auth/mobile` (prod) or `https://abc123.ngrok-free.app/auth/mobile` (dev).
 
-Fragment form is also accepted: `perfectliturgy://auth#token=<token>`.
+The session token is **never** placed in the deep link. The app keeps a PKCE verifier for `state` and posts it with the one-time `code`. The review host may still open `perfectliturgy://auth?session_token=` for Play/App review only.
 
 ---
 
@@ -135,7 +136,7 @@ Some free ngrok plans inject a browser interstitial. Custom Tabs may need one ta
 - [ ] `api.local.properties` points at ngrok; production URLs are not in that file while testing
 - [ ] Local API uses a Neon **dev** branch (`NEON_AUTH_BASE_URL` / `DATABASE_URL` from that branch)
 - [ ] Trusted domain on that branch includes the exact ngrok https origin
-- [ ] `{AUTH_BASE_URL}/auth/mobile` opens `perfectliturgy://auth?session_token=…`
+- [ ] `{AUTH_BASE_URL}/auth/mobile` opens `perfectliturgy://auth?code=…&state=…`
 - [ ] Debug APK rebuilt after URL change
 - [ ] Remove or comment out ngrok overrides (or delete `api.local.properties`) before a production-minded build
 
@@ -147,9 +148,20 @@ All paths below are relative to `AUTH_BASE_URL`. Same Account as the web app.
 
 ### `GET /auth/mobile/start?provider=google|apple`
 
-Preferred mobile social entry. The app opens this **https** URL in a Chrome Custom Tab (not an OkHttp-only `POST`).
+Preferred mobile social entry. The app opens this **https** URL in a Chrome Custom Tab / `ASWebAuthenticationSession` (not an OkHttp-only `POST`).
 
-The API calls Neon `sign-in/social` with `callbackURL` = `{AUTH_BASE_URL}/auth/mobile`, copies Neon’s `session_challenge` cookie onto the API/ngrok host (`SameSite=Lax`, no foreign `Domain`), and **302**s the tab to Google/Apple.
+**Required query**
+
+| Param | Value |
+| :--- | :--- |
+| `provider` | `google` or `apple` |
+| `state` | Unguessable value from the app |
+| `code_challenge` | PKCE S256, base64url, no padding |
+| `code_challenge_method` | `S256` |
+
+Missing `state` or `code_challenge` returns **400** JSON (`missing_state` / `missing_code_challenge`), not a redirect.
+
+The API stores `state` and the challenge in a `SameSite=Lax` cookie, calls Neon `sign-in/social` with `callbackURL` = `{AUTH_BASE_URL}/auth/mobile`, copies Neon’s `session_challenge` cookie onto the API/ngrok host (`SameSite=Lax`, no foreign `Domain`), and **302**s the tab to Google/Apple.
 
 Starting social sign-in only via OkHttp leaves the challenge cookie off the Custom Tab; return to `/auth/mobile` then fails with `session_exchange_failed`.
 
@@ -196,13 +208,42 @@ Sends an email sign-in link.
 ```json
 {
   "email": "user@example.com",
-  "callbackURL": "perfectliturgy://auth"
+  "callbackURL": "perfectliturgy://auth",
+  "state": "<unguessable>",
+  "codeChallenge": "<pkce-s256-challenge>",
+  "codeChallengeMethod": "S256"
 }
 ```
 
-Same `callbackURL` rewrite rule as social sign-in. Magic Link must be enabled on the Neon Auth branch (or equivalent on self-hosted Better Auth).
+`state` and `codeChallenge` are stored on the magic-link record. Same `callbackURL` rewrite rule as social sign-in. Magic Link must be enabled on the Neon Auth branch (or equivalent on self-hosted Better Auth).
 
 **Success (200):** empty or JSON success body. The app shows “Check your email for a sign-in link.”
+
+---
+
+### `POST /auth/mobile/token`
+
+Exchanges the one-time bridge `code` for a long-lived session token. No `Authorization` header.
+
+**Request**
+
+```json
+{
+  "code": "<one-time>",
+  "state": "<same-state-as-start>",
+  "codeVerifier": "<pkce-verifier>"
+}
+```
+
+**Success (200)**
+
+```json
+{
+  "token": "<session-token>"
+}
+```
+
+**400:** bad, reused, or expired code; or state / verifier mismatch.
 
 ---
 
@@ -251,19 +292,21 @@ Not called by OkHttp; opened by the browser after Neon finishes OAuth / magic li
 
 1. The `{AUTH_BASE_URL}` origin must be on Neon’s trusted domains for the Auth branch you are using (prod host on **main**; ngrok host on a **dev** branch).
 2. Page receives the session (cookie from the proxy, or token query params from Neon).
-3. Redirect the browser to:
+3. Mint a one-time `code` bound to the app’s `state` / PKCE challenge, then redirect the browser to:
 
 ```text
-perfectliturgy://auth?session_token=<token>
+perfectliturgy://auth?code=<one-time>&state=<app-state>
 ```
+
+On production (`api.perfectliturgy.com`), the bridge may first land on `/auth/mobile/return` (Android App Link fallback) with the same `code` and `state`. The session token must not appear in the URL, fragment, or HTML.
 
 On error:
 
 ```text
-perfectliturgy://auth?error=<code>
+perfectliturgy://auth?error=<code>&state=<app-state>
 ```
 
-Token query/fragment keys the app accepts: `session_token`, `sessionToken`, `token`, `better-auth.session_token`.
+Legacy / review-host only: `session_token`, `sessionToken`, `token`, `better-auth.session_token` in the query or fragment. Production mobile clients use `code` + `POST /auth/mobile/token`.
 
 ---
 
@@ -271,12 +314,12 @@ Token query/fragment keys the app accepts: `session_token`, `sessionToken`, `tok
 
 | Concern | Requirement |
 | :--- | :--- |
-| Storage | App stores the token in the Android session store; sends `Authorization: Bearer <token>` on authenticated calls |
+| Storage | App stores the token from `/auth/mobile/token` (or review `session_token`); sends `Authorization: Bearer <token>` on authenticated calls |
 | Content API | `/v1/packs/...` and `/v1/bookmarks` must accept the same Bearer token (or a JWT minted from it) |
 | Web parity | Same user id / Account as the website |
-| Preferred mobile token | Long-lived Better Auth **session** token (from Set-Cookie / get-session body). Short-lived JWTs (`set-auth-jwt`, `/token`) expire in ~15 minutes and leave Account looking signed in while pack download returns 401 |
+| Preferred mobile token | Long-lived Better Auth **session** token from the token exchange. Short-lived JWTs (`set-auth-jwt`, `/token`) expire in ~15 minutes and leave Account looking signed in while pack download returns 401 |
 
-Cookie-only web sessions are not enough for the native client. The bridge page must put a bearer-usable **session** token into the deep link. The content API resolves the Account via Neon `get-session` using the same public `Origin` as `/api/auth/*` (from `PUBLIC_APP_URL` / `x-forwarded-host`, not `localhost`) and sends the Bearer token both as `Authorization` and as `__Secure-neon-auth.session_token`.
+Cookie-only web sessions are not enough for the native client. The bridge page must hand the app a one-time `code`; the app exchanges it for a bearer-usable **session** token. The content API resolves the Account via Neon `get-session` using the same public `Origin` as `/api/auth/*` (from `PUBLIC_APP_URL` / `x-forwarded-host`, not `localhost`) and sends the Bearer token both as `Authorization` and as `__Secure-neon-auth.session_token`.
 
 ---
 
@@ -385,9 +428,9 @@ Pull with `neon env pull` after linking the branch.
 
 | User action | Request / navigation |
 | :--- | :--- |
-| Continue with Google | Open `{AUTH_BASE_URL}/auth/mobile/start?provider=google` in a Custom Tab → Google → bridge → `perfectliturgy://auth?session_token=` → `GET /api/auth/get-session` |
+| Continue with Google | Open `{AUTH_BASE_URL}/auth/mobile/start?provider=google&state=&code_challenge=&code_challenge_method=S256` in a Custom Tab → Google → bridge → `perfectliturgy://auth?code=&state=` → `POST /auth/mobile/token` → `GET /api/auth/get-session` |
 | Continue with Apple | Same with `provider=apple` |
-| Email magic link | `POST /api/auth/sign-in/magic-link` → user opens email → bridge → deep link → `get-session` |
+| Email magic link | `POST /api/auth/sign-in/magic-link` with `state` + PKCE → user opens email → bridge → deep link → `POST /auth/mobile/token` → `get-session` |
 | App launch (signed in) | `GET /api/auth/get-session` with stored Bearer |
 | Sign out | `POST /api/auth/sign-out`; clear local token; stop gated sync |
 | After sign-in | `PUT` then `GET /v1/bookmarks` (see packs doc) |
@@ -400,13 +443,13 @@ Pull with `neon env pull` after linking the branch.
 
 - [ ] Default (no `api.local.properties`) uses `https://api.perfectliturgy.com`; Neon URL never shipped in the APK as auth base
 - [ ] Social sign-in returns a usable absolute `url` when `disableRedirect: true`
-- [ ] Google completes and lands in the app with a bearer-usable token
-- [ ] Magic link email completes the same deep-link path
+- [ ] Google completes with PKCE start → `code` deep link → `/auth/mobile/token` → bearer-usable token
+- [ ] Magic link email completes the same code + token-exchange path
 - [ ] Apple works (requires self-hosted Better Auth until Neon adds Apple)
 - [ ] `get-session` with Bearer restores user id / email / name
 - [ ] Same Account appears on web after mobile sign-in (and the reverse)
 - [ ] Gated pack sync (`/v1/packs/...`) accepts the mobile Bearer token
-- [ ] Trusted domains include `https://api.perfectliturgy.com`; bridge page opens `perfectliturgy://auth`
+- [ ] Trusted domains include `https://api.perfectliturgy.com`; bridge page opens `perfectliturgy://auth?code=&state=`
 
 ### Dev (ngrok)
 

@@ -10,6 +10,8 @@ import UIKit
     #expect(AuthReturn.callback(from: encoded) == .session(token: "abc+def"))
     let fragment = try #require(URL(string: "perfectliturgy://auth#session_token=from-mail"))
     #expect(AuthReturn.callback(from: fragment) == .session(token: "from-mail"))
+    let code = try #require(URL(string: "perfectliturgy://auth?code=one-time&state=abc"))
+    #expect(AuthReturn.callback(from: code) == .code(code: "one-time", state: "abc"))
     let other = try #require(URL(string: "perfectliturgy://donate"))
     #expect(!AuthReturn.accepts(other))
     #expect(AuthReturn.callback(from: other) == nil)
@@ -80,20 +82,69 @@ import UIKit
     let base = URL(string: "https://api.example.test")!
     let script = AuthScript()
     let client = AuthClient(transport: script, authBase: base, apiBase: base)
-    let start = client.startURL(provider: "google")
+    let pkce = AuthPKCE.make()
+    let start = client.startURL(provider: "google", pkce: pkce)
     #expect(start.path == "/auth/mobile/start")
-    #expect(URLComponents(url: start, resolvingAgainstBaseURL: false)?.queryItems?.first?.value == "google")
+    let items = URLComponents(url: start, resolvingAgainstBaseURL: false)?.queryItems ?? []
+    #expect(items.first(where: { $0.name == "provider" })?.value == "google")
+    #expect(items.first(where: { $0.name == "state" })?.value == pkce.state)
+    #expect(items.first(where: { $0.name == "code_challenge" })?.value == pkce.challenge)
+    #expect(items.first(where: { $0.name == "code_challenge_method" })?.value == "S256")
 
     script.enqueue(status: 200, body: Data())
-    try await client.sendMagicLink(email: "ada@example.com")
+    try await client.sendMagicLink(email: "ada@example.com", pkce: pkce)
     let request = try #require(script.requests.first)
     #expect(request.url?.path == "/api/auth/sign-in/magic-link")
     let body = try #require(request.httpBody)
     let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
     #expect(json["email"] as? String == "ada@example.com")
     #expect(json["callbackURL"] as? String == "perfectliturgy://auth")
+    #expect(json["state"] as? String == pkce.state)
+    #expect(json["codeChallenge"] as? String == pkce.challenge)
+    #expect(json["codeChallengeMethod"] as? String == "S256")
     #expect(!AccountEmail.isValid("ada"))
     #expect(AccountEmail.isValid("ada@example.com"))
+}
+
+@Test func `a mobile code exchanges for a session token`() async throws {
+    let base = URL(string: "https://api.example.test")!
+    let script = AuthScript()
+    script.enqueue(status: 200, body: Data(#"{"token":"session-from-code"}"#.utf8))
+    let client = AuthClient(transport: script, authBase: base, apiBase: base)
+    let token = try await client.exchangeMobileCode(code: "one-time", state: "abc", verifier: "verifier")
+    #expect(token == "session-from-code")
+    let request = try #require(script.requests.first)
+    #expect(request.url?.path == "/auth/mobile/token")
+    #expect(request.httpMethod == "POST")
+    let json = try #require(JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any])
+    #expect(json["code"] as? String == "one-time")
+    #expect(json["state"] as? String == "abc")
+    #expect(json["codeVerifier"] as? String == "verifier")
+
+    let defaults = try #require(UserDefaults(suiteName: "pkce-redeem-\(UUID().uuidString)"))
+    let session = AppSession(token: nil, store: MemorySessionStore(), defaults: defaults)
+    let pkce = AuthPKCE(state: "abc", verifier: "verifier", challenge: "challenge")
+    session.remember(pkce)
+    let redeem = AuthScript()
+    redeem.enqueue(status: 200, body: Data(#"{"token":"session-from-code"}"#.utf8))
+    redeem.enqueue(status: 200, body: Data("""
+    {"user":{"id":"user_1","email":"ada@example.com","name":"Ada"},"session":{}}
+    """.utf8))
+    redeem.enqueue(status: 200, body: Data(#"{"data":[],"page":1,"pageSize":50,"total":0}"#.utf8))
+    redeem.enqueue(status: 200, body: Data(#"{"data":[],"page":1,"pageSize":50,"total":0}"#.utf8))
+    let container = try HymnStore.make(inMemory: true)
+    let link = try #require(URL(string: "perfectliturgy://auth?code=one-time&state=abc"))
+    session.prepare(.google)
+    await session.accept(
+        link,
+        client: AuthClient(transport: redeem, authBase: base, apiBase: base),
+        context: container.mainContext,
+        trusted: true
+    )
+    #expect(session.isSignedIn)
+    #expect(session.token == "session-from-code")
+    #expect(session.method == .google)
+    #expect(AuthPKCEStore.load(defaults: defaults) == nil)
 }
 
 @Test func `a sent magic link asks the reader to check email and does not sign in`() async throws {

@@ -325,9 +325,15 @@ final class AppSession {
         notice = nil
     }
 
+    /// Keeps the PKCE verifier until the browser or magic-link return finishes.
+    func remember(_ pkce: AuthPKCE) {
+        AuthPKCEStore.save(pkce, defaults: defaults)
+    }
+
     func cancelPending() {
         pendingMethod = nil
         isWorking = false
+        AuthPKCEStore.clear(defaults: defaults)
     }
 
     /// Confirm a stored token on launch. A rejected session signs out. A network failure keeps the token.
@@ -353,6 +359,8 @@ final class AppSession {
             return
         }
         switch AuthReturn.callback(from: url) {
+        case .code(let code, let state):
+            await redeem(code: code, state: state, client: client, context: context, trusted: trusted)
         case .session(let token):
             if trusted {
                 await establish(
@@ -367,8 +375,51 @@ final class AppSession {
         case .failure:
             isWorking = false
             notice = AccountCopy.signInFailed
+            AuthPKCEStore.clear(defaults: defaults)
         case nil:
             isWorking = false
+        }
+    }
+
+    /// Exchanges the one-time bridge code, then confirms or stores the Account.
+    private func redeem(
+        code: String,
+        state: String,
+        client: AuthClient,
+        context: ModelContext,
+        trusted: Bool
+    ) async {
+        guard let pkce = AuthPKCEStore.load(defaults: defaults), pkce.state == state else {
+            isWorking = false
+            notice = AccountCopy.signInFailed
+            AuthPKCEStore.clear(defaults: defaults)
+            return
+        }
+        isWorking = true
+        do {
+            let token = try await client.exchangeMobileCode(
+                code: code,
+                state: state,
+                verifier: pkce.verifier
+            )
+            AuthPKCEStore.clear(defaults: defaults)
+            if trusted {
+                await establish(
+                    token: token,
+                    method: pendingMethod ?? .email,
+                    client: client,
+                    context: context
+                )
+            } else {
+                await review(token: token, client: client)
+            }
+        } catch AuthError.rejected {
+            isWorking = false
+            notice = AccountCopy.signInFailed
+            AuthPKCEStore.clear(defaults: defaults)
+        } catch {
+            isWorking = false
+            notice = AccountCopy.connection
         }
     }
 
@@ -416,10 +467,13 @@ final class AppSession {
         notice = nil
         defer { isWorking = false }
         do {
-            try await client.sendMagicLink(email: trimmed)
+            let pkce = AuthPKCE.make()
+            remember(pkce)
+            try await client.sendMagicLink(email: trimmed, pkce: pkce)
             pendingMethod = .email
             notice = AccountCopy.magicLinkSent
         } catch {
+            AuthPKCEStore.clear(defaults: defaults)
             notice = AccountCopy.connection
         }
     }

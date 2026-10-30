@@ -93,14 +93,45 @@ struct AuthClient {
     }
 
     /// The browser must open this page so the session challenge cookie stays on that tab.
-    func startURL(provider: String) -> URL {
+    /// `state` and the PKCE S256 challenge are required; without them the host returns 400 `missing_state`.
+    func startURL(provider: String, pkce: AuthPKCE) -> URL {
         let base = authBase
             .appending(path: "auth")
             .appending(path: "mobile")
             .appending(path: "start")
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return base }
-        components.queryItems = [URLQueryItem(name: "provider", value: provider)]
+        components.queryItems = [
+            URLQueryItem(name: "provider", value: provider),
+            URLQueryItem(name: "state", value: pkce.state),
+            URLQueryItem(name: "code_challenge", value: pkce.challenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
+        ]
         return components.url ?? base
+    }
+
+    /// Turns the bridge `code` into a long-lived session token. No Authorization header.
+    func exchangeMobileCode(code: String, state: String, verifier: String) async throws -> String {
+        let url = authBase
+            .appending(path: "auth")
+            .appending(path: "mobile")
+            .appending(path: "token")
+        let body = try JSONEncoder().encode(
+            MobileTokenBody(code: code, state: state, codeVerifier: verifier)
+        )
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, http) = try await send(request)
+        guard (200..<300).contains(http.statusCode) else { throw AuthError.rejected }
+        let fields = Self.fields(in: data)
+        if let token = fields.token, !token.isEmpty { return token }
+        if let header = Self.cookieHeader(in: http),
+           let token = Self.cookieToken(in: header), !token.isEmpty {
+            return token
+        }
+        throw AuthError.rejected
     }
 
     func currentSession(bearer: String) async throws -> ConfirmedSession {
@@ -123,13 +154,21 @@ struct AuthClient {
         )
     }
 
-    func sendMagicLink(email: String) async throws {
+    func sendMagicLink(email: String, pkce: AuthPKCE) async throws {
         let url = authBase
             .appending(path: "api")
             .appending(path: "auth")
             .appending(path: "sign-in")
             .appending(path: "magic-link")
-        let body = try JSONEncoder().encode(MagicLinkBody(email: email, callbackURL: "perfectliturgy://auth"))
+        let body = try JSONEncoder().encode(
+            MagicLinkBody(
+                email: email,
+                callbackURL: "perfectliturgy://auth",
+                state: pkce.state,
+                codeChallenge: pkce.challenge,
+                codeChallengeMethod: "S256"
+            )
+        )
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.httpBody = body
@@ -322,6 +361,15 @@ struct AuthClient {
 private struct MagicLinkBody: Encodable {
     var email: String
     var callbackURL: String
+    var state: String
+    var codeChallenge: String
+    var codeChallengeMethod: String
+}
+
+private struct MobileTokenBody: Encodable {
+    var code: String
+    var state: String
+    var codeVerifier: String
 }
 
 private struct BookmarkEnvelope: Decodable {

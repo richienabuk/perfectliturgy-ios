@@ -47,6 +47,11 @@ func `auth return reads the session token`(raw: String, expected: String) throws
     #expect(AuthReturn.callback(from: url) == .session(token: expected))
 }
 
+@Test func `auth return prefers a one-time code over a session token`() throws {
+    let url = try #require(URL(string: "perfectliturgy://auth?code=one-time&state=s1&session_token=ignored"))
+    #expect(AuthReturn.callback(from: url) == .code(code: "one-time", state: "s1"))
+}
+
 @Test func `an auth return without a token is still the auth link`() throws {
     let url = try #require(URL(string: "perfectliturgy://auth"))
     #expect(AuthReturn.accepts(url))
