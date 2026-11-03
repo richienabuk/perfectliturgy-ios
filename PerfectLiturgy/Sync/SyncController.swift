@@ -16,7 +16,7 @@ final class LinkMonitor {
     func start() {
         guard !started else { return }
         started = true
-        monitor.pathUpdateHandler = { path in
+        monitor.pathUpdateHandler = { @Sendable path in
             let next = LinkKind(
                 online: path.status == .satisfied,
                 metered: path.isExpensive || path.isConstrained

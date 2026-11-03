@@ -63,7 +63,11 @@ final class NoticeCenter {
     var client = DeviceClient(transport: LivePackTransport(), apiBase: ServiceOrigin.apiBaseURL, bearer: nil)
 
     func present(userInfo: [AnyHashable: Any]) {
-        presented = NoticePayload.notice(from: userInfo)
+        present(NoticePayload.notice(from: userInfo))
+    }
+
+    func present(_ notice: ParishNotice?) {
+        presented = notice
     }
 
     func tokenArrived(_ token: String?) async {

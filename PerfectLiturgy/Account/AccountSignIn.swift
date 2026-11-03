@@ -28,7 +28,7 @@ final class WebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding
             let session = ASWebAuthenticationSession(
                 url: url,
                 callbackURLScheme: "perfectliturgy"
-            ) { callback, error in
+            ) { @Sendable callback, error in
                 Task { @MainActor in
                     if let callback {
                         self.finish(.success(callback))

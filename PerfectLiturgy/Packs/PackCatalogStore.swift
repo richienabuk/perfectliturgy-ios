@@ -21,8 +21,8 @@ final class PackCatalogStore {
         self.root = root ?? DevotionLibrary.applicationSupport
         packs = PackSeed.rows
         // The token is not kept. The closure holds `self` weakly and does nothing once it is gone.
-        _ = NotificationCenter.default.addObserver(forName: .packCatalogDidChange, object: nil, queue: nil) { [weak self] _ in
-            Task { @MainActor in await self?.reload() }
+        _ = NotificationCenter.default.addObserver(forName: .packCatalogDidChange, object: nil, queue: .main) { [weak self] _ in
+            Task { await self?.reload() }
         }
         Task { await reload() }
     }

@@ -20,10 +20,11 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
         FirebaseApp.configure()
         UNUserNotificationCenter.current().delegate = self
         Messaging.messaging().delegate = self
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+        // Authorization finishes off the main actor. Do not inherit MainActor on this callback.
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { @Sendable granted, _ in
             guard granted else { return }
             Task { @MainActor in
-                application.registerForRemoteNotifications()
+                UIApplication.shared.registerForRemoteNotifications()
             }
         }
         return true
@@ -37,14 +38,15 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
         noticeLog.error("Remote notification registration failed")
     }
 
-    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+    /// Firebase may deliver this off the main actor.
+    nonisolated func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
         let token = fcmToken
         Task { @MainActor in
             await NoticeCenter.shared.tokenArrived(token)
         }
     }
 
-    func userNotificationCenter(
+    nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
@@ -52,15 +54,15 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
         completionHandler([.banner, .list, .sound])
     }
 
-    func userNotificationCenter(
+    nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let info = response.notification.request.content.userInfo
+        let notice = NoticePayload.notice(from: response.notification.request.content.userInfo)
         Task { @MainActor in
-            NoticeCenter.shared.present(userInfo: info)
-            completionHandler()
+            NoticeCenter.shared.present(notice)
         }
+        completionHandler()
     }
 }

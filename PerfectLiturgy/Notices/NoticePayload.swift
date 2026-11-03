@@ -9,7 +9,7 @@ struct ParishNotice: Identifiable, Equatable, Sendable {
     var id: String { "\(title)\u{1f}\(body ?? "")\u{1f}\(imageURL?.absoluteString ?? "")" }
 }
 
-enum NoticePayload {
+nonisolated enum NoticePayload {
     static func notice(from userInfo: [AnyHashable: Any]) -> ParishNotice? {
         let title = text(userInfo["title"]) ?? alertTitle(userInfo)
         guard let title, !title.isEmpty else { return nil }
