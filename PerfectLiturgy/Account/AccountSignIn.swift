@@ -1,6 +1,4 @@
 import AuthenticationServices
-import CryptoKit
-import Security
 import UIKit
 
 enum InterfaceAnchor {
@@ -14,27 +12,7 @@ enum InterfaceAnchor {
     }
 }
 
-enum AppleNonce {
-    static func make(count: Int = 32) -> String {
-        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
-        var bytes = [UInt8](repeating: 0, count: count)
-        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        precondition(status == errSecSuccess, "A nonce needs random bytes.")
-        return String(bytes.map { charset[Int($0) % charset.count] })
-    }
-
-    static func sha256(_ value: String) -> String {
-        SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
-    }
-}
-
-struct AppleCredential: Equatable, Sendable {
-    var identityToken: String
-    var nonce: String
-    var name: String?
-}
-
-/// Google and the magic-link return use the system browser, then `perfectliturgy://auth`.
+/// Google and Apple open the system browser, then return on `perfectliturgy://auth`.
 @MainActor
 final class WebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding {
     private var session: ASWebAuthenticationSession?
@@ -90,84 +68,5 @@ final class WebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding
             return AuthError.cancelled
         }
         return AuthError.transport
-    }
-}
-
-/// The system Apple sheet. The server must accept the identity token before a session is stored.
-@MainActor
-final class AppleSignIn: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
-    private var controller: ASAuthorizationController?
-    private var continuation: CheckedContinuation<AppleCredential, Error>?
-    private var nonce = ""
-    private var resumed = false
-    nonisolated(unsafe) private var anchor: ASPresentationAnchor?
-
-    func authenticate() async throws -> AppleCredential {
-        let nonce = AppleNonce.make()
-        self.nonce = nonce
-        anchor = InterfaceAnchor.window
-        let request = ASAuthorizationAppleIDProvider().createRequest()
-        request.requestedScopes = [.fullName, .email]
-        request.nonce = AppleNonce.sha256(nonce)
-        let controller = ASAuthorizationController(authorizationRequests: [request])
-        controller.delegate = self
-        controller.presentationContextProvider = self
-        self.controller = controller
-        return try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
-            controller.performRequests()
-        }
-    }
-
-    nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        anchor ?? ASPresentationAnchor()
-    }
-
-    nonisolated func authorizationController(
-        controller: ASAuthorizationController,
-        didCompleteWithAuthorization authorization: ASAuthorization
-    ) {
-        Task { @MainActor in
-            guard
-                let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
-                let data = credential.identityToken,
-                let token = String(data: data, encoding: .utf8),
-                !token.isEmpty
-            else {
-                finish(.failure(AuthError.appleUnavailable))
-                return
-            }
-            let name = [credential.fullName?.givenName, credential.fullName?.familyName]
-                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .joined(separator: " ")
-            finish(.success(AppleCredential(
-                identityToken: token,
-                nonce: nonce,
-                name: name.isEmpty ? nil : name
-            )))
-        }
-    }
-
-    nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-        Task { @MainActor in
-            let nsError = error as NSError
-            if nsError.domain == ASAuthorizationError.errorDomain,
-               nsError.code == ASAuthorizationError.canceled.rawValue {
-                finish(.failure(AuthError.cancelled))
-            } else {
-                finish(.failure(AuthError.appleUnavailable))
-            }
-        }
-    }
-
-    private func finish(_ result: Result<AppleCredential, Error>) {
-        guard !resumed else { return }
-        resumed = true
-        controller = nil
-        anchor = nil
-        let continuation = continuation
-        self.continuation = nil
-        continuation?.resume(with: result)
     }
 }

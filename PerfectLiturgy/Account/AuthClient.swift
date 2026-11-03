@@ -3,7 +3,6 @@ import SwiftData
 
 enum AuthError: Error, Equatable {
     case rejected
-    case appleUnavailable
     case cancelled
     case transport
 }
@@ -176,38 +175,6 @@ struct AuthClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (_, http) = try await send(request)
         guard (200..<300).contains(http.statusCode) else { throw AuthError.transport }
-    }
-
-    /// Native Apple. A server that has no Apple provider returns no session token.
-    func exchangeApple(identityToken: String, nonce: String) async throws -> String {
-        let url = authBase
-            .appending(path: "api")
-            .appending(path: "auth")
-            .appending(path: "sign-in")
-            .appending(path: "social")
-        let payload: [String: Any] = [
-            "provider": "apple",
-            "callbackURL": "perfectliturgy://auth",
-            "disableRedirect": true,
-            "idToken": [
-                "token": identityToken,
-                "nonce": nonce,
-            ],
-        ]
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        request.timeoutInterval = 30
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let (data, http) = try await send(request)
-        guard (200..<300).contains(http.statusCode) else { throw AuthError.appleUnavailable }
-        let fields = Self.fields(in: data)
-        if let token = fields.token, !token.isEmpty { return token }
-        if let header = Self.cookieHeader(in: http),
-           let token = Self.cookieToken(in: header), !token.isEmpty {
-            return token
-        }
-        throw AuthError.appleUnavailable
     }
 
     /// True when the server ended the session, or no longer knows it.

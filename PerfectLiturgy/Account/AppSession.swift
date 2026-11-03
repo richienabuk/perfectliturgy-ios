@@ -11,7 +11,6 @@ enum AccountCopy {
     static let syncTitle = "Sync status"
     static let syncStatus = "Update hymns and readings."
     static let magicLinkSent = "Check your email for a sign-in link."
-    static let appleUnavailable = "Sign in with Apple is not available yet."
     static let signInFailed = "Sign-in did not finish. Try again."
     static let connection = "Check the connection and try again."
     static let emailMissing = "Enter an email address."
@@ -474,28 +473,6 @@ final class AppSession {
             notice = AccountCopy.magicLinkSent
         } catch {
             AuthPKCEStore.clear(defaults: defaults)
-            notice = AccountCopy.connection
-        }
-    }
-
-    func signInWithApple(
-        identityToken: String,
-        nonce: String,
-        name: String?,
-        client: AuthClient,
-        context: ModelContext
-    ) async {
-        isWorking = true
-        notice = nil
-        defer { isWorking = false }
-        do {
-            let token = try await client.exchangeApple(identityToken: identityToken, nonce: nonce)
-            await establish(token: token, method: .apple, name: name, client: client, context: context)
-        } catch AuthError.appleUnavailable {
-            notice = AccountCopy.appleUnavailable
-        } catch AuthError.cancelled {
-            return
-        } catch {
             notice = AccountCopy.connection
         }
     }

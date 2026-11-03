@@ -78,18 +78,20 @@ import UIKit
     #expect(store.cachedAccount == nil)
 }
 
-@Test func `google starts in the browser and a magic link posts the callback`() async throws {
+@Test func `google and apple start in the browser and a magic link posts the callback`() async throws {
     let base = URL(string: "https://api.example.test")!
     let script = AuthScript()
     let client = AuthClient(transport: script, authBase: base, apiBase: base)
     let pkce = AuthPKCE.make()
-    let start = client.startURL(provider: "google", pkce: pkce)
-    #expect(start.path == "/auth/mobile/start")
-    let items = URLComponents(url: start, resolvingAgainstBaseURL: false)?.queryItems ?? []
-    #expect(items.first(where: { $0.name == "provider" })?.value == "google")
-    #expect(items.first(where: { $0.name == "state" })?.value == pkce.state)
-    #expect(items.first(where: { $0.name == "code_challenge" })?.value == pkce.challenge)
-    #expect(items.first(where: { $0.name == "code_challenge_method" })?.value == "S256")
+    for provider in ["google", "apple"] {
+        let start = client.startURL(provider: provider, pkce: pkce)
+        #expect(start.path == "/auth/mobile/start")
+        let items = URLComponents(url: start, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        #expect(items.first(where: { $0.name == "provider" })?.value == provider)
+        #expect(items.first(where: { $0.name == "state" })?.value == pkce.state)
+        #expect(items.first(where: { $0.name == "code_challenge" })?.value == pkce.challenge)
+        #expect(items.first(where: { $0.name == "code_challenge_method" })?.value == "S256")
+    }
 
     script.enqueue(status: 200, body: Data())
     try await client.sendMagicLink(email: "ada@example.com", pkce: pkce)
@@ -169,37 +171,6 @@ import UIKit
     )
     #expect(failed.notice == AccountCopy.connection)
     #expect(!failed.isSignedIn)
-}
-
-@Test func `apple is stored only when the server returns a session`() async throws {
-    let base = URL(string: "https://api.example.test")!
-    let refused = AuthScript()
-    refused.enqueue(status: 404, body: Data(#"{"message":"provider"}"#.utf8))
-    let client = AuthClient(transport: refused, authBase: base, apiBase: base)
-    await #expect(throws: AuthError.appleUnavailable) {
-        try await client.exchangeApple(identityToken: "jwt", nonce: "nonce")
-    }
-
-    let accepted = AuthScript()
-    accepted.enqueue(
-        status: 200,
-        body: Data(#"{"token":"apple-session"}"#.utf8),
-        headers: ["Set-Cookie": "__Secure-neon-auth.session_token=from-cookie"]
-    )
-    let ready = AuthClient(transport: accepted, authBase: base, apiBase: base)
-    let token = try await ready.exchangeApple(identityToken: "jwt", nonce: "nonce")
-    #expect(token == "apple-session")
-    let request = try #require(accepted.requests.first)
-    let payload = try #require(JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any])
-    #expect(payload["provider"] as? String == "apple")
-    let idToken = try #require(payload["idToken"] as? [String: Any])
-    #expect(idToken["token"] as? String == "jwt")
-    #expect(idToken["nonce"] as? String == "nonce")
-
-    let cookieOnly = AuthScript()
-    cookieOnly.enqueue(status: 200, body: Data("{}".utf8), headers: ["Set-Cookie": "better-auth.session_token=from-cookie; Path=/"])
-    let cookieClient = AuthClient(transport: cookieOnly, authBase: base, apiBase: base)
-    #expect(try await cookieClient.exchangeApple(identityToken: "jwt", nonce: "nonce") == "from-cookie")
 }
 
 @Test func `a bookmark made while signed out joins the account and stays after sign-out`() async throws {

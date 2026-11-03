@@ -334,19 +334,18 @@ struct AccountView: View {
     }
 
     private func apple() async {
+        session.prepare(.apple)
+        session.isWorking = true
+        let pkce = AuthPKCE.make()
+        session.remember(pkce)
         do {
-            let credential = try await AppleSignIn().authenticate()
-            await session.signInWithApple(
-                identityToken: credential.identityToken,
-                nonce: credential.nonce,
-                name: credential.name,
-                client: client,
-                context: modelContext
-            )
+            let url = try await WebSignIn().authenticate(client.startURL(provider: "apple", pkce: pkce))
+            await session.accept(url, client: client, context: modelContext, trusted: true)
         } catch AuthError.cancelled {
-            return
+            session.cancelPending()
         } catch {
-            session.notice = AccountCopy.appleUnavailable
+            session.cancelPending()
+            session.notice = AccountCopy.connection
         }
     }
 

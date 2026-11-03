@@ -260,7 +260,7 @@ Recommend a country pack from the device locale when the catalog has one.
 
 Settings heading "Settings". Support "Set the reading surface to suit you." Appearance, then a live reading sample, then the two sliders, then Auto sync with "Only on Wi-Fi or an unmetered plan.", then an Account row.
 
-Signed-out Account offers Google, Apple, and email magic link. Google and magic link use `ASWebAuthenticationSession` with PKCE (`state` + S256 challenge). The return is `perfectliturgy://auth?code=&state=`; exchange via `POST /auth/mobile/token`, then confirm with `GET /api/auth/get-session` and store the token in the Keychain. Apple uses the native Sign in with Apple button. Signed-in Account shows the name and email, sign-out, sync, and a way to Saved.
+Signed-out Account offers Google, Apple, and email magic link. Google, Apple, and magic link use `ASWebAuthenticationSession` with PKCE (`state` + S256 challenge). Apple opens `GET /auth/mobile/start?provider=apple` (same bridge as Google). The return is `perfectliturgy://auth?code=&state=`; exchange via `POST /auth/mobile/token`, then confirm with `GET /api/auth/get-session` and store the token in the Keychain. Native Sign in with Apple is deferred until Managed Auth accepts iPhone idTokens. Signed-in Account shows the name and email, sign-out, sync, and a way to Saved.
 
 After sign-in, `PUT /v1/bookmarks` with the saved rows and the removals, then `GET /v1/bookmarks`, and merge by type and id. A row with `deletedAt` is removed here. A saved row stays.
 
@@ -418,7 +418,7 @@ Phase 6 only. Apply readings packs into the local Bible and country calendars fr
 **Prompt:**
 
 ```text
-Phase 7 only. Account from docs/mobile-app-brief.md and docs/api-mobile-auth.md. Google and magic link through ASWebAuthenticationSession, session in the Keychain, bookmark merge via the bookmarks routes in docs/api-mobile-packs.md. Native Sign in with Apple when the server accepts it. Sign-out keeps local content and stops gated download. Read DESIGN.md and GLOSSARY.md. No push and no background sync yet.
+Phase 7 only. Account from docs/mobile-app-brief.md and docs/api-mobile-auth.md. Google, Apple, and magic link through ASWebAuthenticationSession, session in the Keychain, bookmark merge via the bookmarks routes in docs/api-mobile-packs.md. Native Sign in with Apple later when Managed Auth accepts iPhone idTokens. Sign-out keeps local content and stops gated download. Read DESIGN.md and GLOSSARY.md. No push and no background sync yet.
 ```
 
 ### Phase 8 — Sync, notices, Mass Times, and Donate
