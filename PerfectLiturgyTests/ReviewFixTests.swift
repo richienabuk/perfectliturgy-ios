@@ -44,13 +44,14 @@ private func freshDefaults() throws -> UserDefaults {
     let created = Date(timeIntervalSince1970: 1_729_000_000)
     context.insert(Bookmark(type: BookmarkType.prayers, itemId: "test-one", titleSnapshot: "Test prayer one", language: "en", createdAt: created))
     try context.save()
-    try Bookmarks.remove(type: BookmarkType.prayers, id: "test-one", in: context, defaults: defaults)
+    try Bookmarks.remove(type: BookmarkType.prayers, id: "test-one", packId: "prayers-en", in: context, defaults: defaults)
 
     let sent = BookmarkSync.payload(try context.fetch(FetchDescriptor<Bookmark>()), defaults: defaults)
     let row = try #require(sent.first)
     #expect(sent.count == 1)
     #expect(row.type == BookmarkType.prayers)
     #expect(row.id == "test-one")
+    #expect(row.packId == "prayers-en")
     #expect(row.titleSnapshot == "Test prayer one")
     #expect(row.createdAt == 1_729_000_000_000)
     let removedAt = try #require(row.deletedAt)
@@ -58,17 +59,18 @@ private func freshDefaults() throws -> UserDefaults {
 
     let body = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(sent)) as? [[String: Any]])
     #expect(body.first?["deletedAt"] as? NSNumber != nil)
+    #expect(body.first?["packId"] as? String == "prayers-en")
 }
 
 @Test func `a saved bookmark is sent with an empty removal time`() throws {
-    let draft = BookmarkDraft(
-        type: BookmarkType.hymns,
+    let draft = BookmarkDraft(type: BookmarkType.hymns,
         id: "local-hymn",
+        packId: "hymns-en",
         titleSnapshot: "Test hymn one",
-        createdAt: 1_729_000_000_000
-    )
+        createdAt: 1_729_000_000_000)
     let body = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode([draft])) as? [[String: Any]])
     #expect(body.first?["deletedAt"] is NSNull)
+    #expect(body.first?["packId"] as? String == "hymns-en")
 }
 
 @Test func `an account removal drops the bookmark on this device`() throws {
@@ -80,22 +82,20 @@ private func freshDefaults() throws -> UserDefaults {
     context.insert(Bookmark(type: BookmarkType.hymns, itemId: "test-one", titleSnapshot: "Test hymn one", language: "en", createdAt: created))
     try context.save()
 
-    let removed = BookmarkDraft(
-        type: BookmarkType.hymns,
+    let removed = BookmarkDraft(type: BookmarkType.hymns,
         id: "test-one",
+        packId: "hymns-en",
         titleSnapshot: "Test hymn one",
         createdAt: BookmarkSync.milliseconds(created),
-        deletedAt: BookmarkSync.milliseconds(created) + 5_000
-    )
+        deletedAt: BookmarkSync.milliseconds(created) + 5_000)
     try BookmarkSync.merge([removed], into: context, defaults: defaults)
     #expect(try context.fetch(FetchDescriptor<Bookmark>()).isEmpty)
 
-    let stale = BookmarkDraft(
-        type: BookmarkType.hymns,
+    let stale = BookmarkDraft(type: BookmarkType.hymns,
         id: "test-one",
+        packId: "hymns-en",
         titleSnapshot: "Test hymn one",
-        createdAt: BookmarkSync.milliseconds(created)
-    )
+        createdAt: BookmarkSync.milliseconds(created))
     try BookmarkSync.merge([stale], into: context, defaults: defaults)
     #expect(try context.fetch(FetchDescriptor<Bookmark>()).isEmpty)
 }
@@ -108,13 +108,12 @@ private func freshDefaults() throws -> UserDefaults {
     let created = Date(timeIntervalSince1970: 1_729_000_000)
     context.insert(Bookmark(type: BookmarkType.litanies, itemId: "saints", titleSnapshot: "Test litany one", language: "en", createdAt: created.addingTimeInterval(10)))
     try context.save()
-    let removed = BookmarkDraft(
-        type: BookmarkType.litanies,
+    let removed = BookmarkDraft(type: BookmarkType.litanies,
         id: "saints",
+        packId: "litanies-en",
         titleSnapshot: "Test litany one",
         createdAt: BookmarkSync.milliseconds(created),
-        deletedAt: BookmarkSync.milliseconds(created) + 1_000
-    )
+        deletedAt: BookmarkSync.milliseconds(created) + 1_000)
     try BookmarkSync.merge([removed], into: context, defaults: defaults)
     #expect(try context.fetch(FetchDescriptor<Bookmark>()).map(\.itemId) == ["saints"])
     #expect(BookmarkRemovals.pending(defaults: defaults).isEmpty)
@@ -129,12 +128,14 @@ private func freshDefaults() throws -> UserDefaults {
     try Bookmarks.toggle(type: BookmarkType.prayers, id: "test-one", title: "Test prayer one", language: "en", in: context, defaults: defaults)
     #expect(try context.fetch(FetchDescriptor<Bookmark>()).isEmpty)
 
-    let removedAt = try #require(BookmarkRemovals.all(defaults: defaults)["prayers|test-one"])
-    let older = BookmarkDraft(type: BookmarkType.prayers, id: "test-one", titleSnapshot: "Test prayer one", createdAt: removedAt - 5_000)
+    let removedAt = try #require(BookmarkRemovals.all(defaults: defaults)["prayers|test-one|prayers-en"])
+    let older = BookmarkDraft(type: BookmarkType.prayers, id: "test-one",
+        packId: "prayers-en", titleSnapshot: "Test prayer one", createdAt: removedAt - 5_000)
     try BookmarkSync.merge([older], into: context, defaults: defaults)
     #expect(try context.fetch(FetchDescriptor<Bookmark>()).isEmpty)
 
-    let newer = BookmarkDraft(type: BookmarkType.prayers, id: "test-one", titleSnapshot: "Test prayer one", createdAt: removedAt + 5_000)
+    let newer = BookmarkDraft(type: BookmarkType.prayers, id: "test-one",
+        packId: "prayers-en", titleSnapshot: "Test prayer one", createdAt: removedAt + 5_000)
     try BookmarkSync.merge([newer], into: context, defaults: defaults)
     #expect(try context.fetch(FetchDescriptor<Bookmark>()).map(\.itemId) == ["test-one"])
     #expect(BookmarkRemovals.all(defaults: defaults).isEmpty)
@@ -145,7 +146,7 @@ private func freshDefaults() throws -> UserDefaults {
     let context = container.mainContext
     defer { withExtendedLifetime(container) {} }
     let defaults = try freshDefaults()
-    BookmarkRemovals.mark("litanies|saints", defaults: defaults)
+    BookmarkRemovals.mark("litanies|saints|litanies-en", defaults: defaults)
     try Bookmarks.toggle(type: BookmarkType.litanies, id: "saints", title: "Test litany one", language: "en", in: context, defaults: defaults)
     #expect(BookmarkRemovals.all(defaults: defaults).isEmpty)
 }
@@ -158,11 +159,12 @@ private func freshDefaults() throws -> UserDefaults {
     let created = Date(timeIntervalSince1970: 1_729_000_000)
     context.insert(Bookmark(type: BookmarkType.prayers, itemId: "test-one", titleSnapshot: "Test prayer one", language: "en", createdAt: created))
     try context.save()
-    let draft = BookmarkDraft(type: BookmarkType.prayers, id: "test-one", titleSnapshot: "Test prayer one", createdAt: BookmarkSync.milliseconds(created))
-    try Bookmarks.remove(type: BookmarkType.prayers, id: "test-one", in: context, defaults: defaults)
+    let draft = BookmarkDraft(type: BookmarkType.prayers, id: "test-one",
+        packId: "prayers-en", titleSnapshot: "Test prayer one", createdAt: BookmarkSync.milliseconds(created))
+    try Bookmarks.remove(type: BookmarkType.prayers, id: "test-one", packId: "prayers-en", in: context, defaults: defaults)
     #expect(try context.fetch(FetchDescriptor<Bookmark>()).isEmpty)
 
-    try Bookmarks.restore(draft, language: "en", in: context, defaults: defaults)
+    try Bookmarks.restore(draft, in: context, defaults: defaults)
     let restored = try context.fetch(FetchDescriptor<Bookmark>())
     #expect(restored.map(\.itemId) == ["test-one"])
     #expect(restored.first?.createdAt == created)
@@ -195,24 +197,28 @@ private func freshDefaults() throws -> UserDefaults {
     #expect(defaults.string(forKey: BookmarkOwner.storageKey)?.contains("user_2") == false)
 }
 
-@Test func `a saved prayer opens in the language the reader has open`() {
+@Test func `a saved prayer opens in the language it was saved in`() {
     func body(_ code: String) -> DevotionBody {
         .prayers(language: code, prayers: [SpecialPrayer(order: 1, id: "test-one", title: "Prayer \(code)", summary: nil, category: nil, text: "Test")])
     }
     let installed: Set<String> = ["prayers-en", "prayers-la"]
     let load: (DevotionKind, String) -> DevotionBody? = { _, code in body(code) }
 
-    let inLatin = DevotionBookmarks.locate(type: "prayers", id: "test-one", language: "en", current: "la", installed: installed, load: load)
-    #expect(inLatin == LocatedDevotion(language: "la", title: "Prayer la"))
-
-    let notInstalled = DevotionBookmarks.locate(type: "prayers", id: "test-one", language: "en", current: "es", installed: installed, load: load)
-    #expect(notInstalled?.language == "en")
-
-    let missingThere = DevotionBookmarks.locate(
-        type: "prayers", id: "test-one", language: "en", current: "la", installed: installed,
-        load: { _, code in code == "la" ? nil : body(code) }
+    let savedEnglish = DevotionBookmarks.locate(
+        type: "prayers", id: "test-one", language: "en", packId: "prayers-en", installed: installed, load: load
     )
-    #expect(missingThere?.language == "en")
+    #expect(savedEnglish == LocatedDevotion(language: "en", title: "Prayer en"))
+
+    let savedLatin = DevotionBookmarks.locate(
+        type: "prayers", id: "test-one", language: "la", packId: "prayers-la", installed: installed, load: load
+    )
+    #expect(savedLatin == LocatedDevotion(language: "la", title: "Prayer la"))
+
+    let missingPack = DevotionBookmarks.locate(
+        type: "prayers", id: "test-one", language: "en", packId: "prayers-en",
+        installed: ["prayers-la"], load: load
+    )
+    #expect(missingPack == nil)
 }
 
 // MARK: Sign-in
@@ -424,7 +430,7 @@ private func addHymn(_ n: Int, to context: ModelContext, at date: Date) {
     #expect(!all.contains { $0.itemId == "test-one" })
     #expect(all.contains { $0.itemId == "test-two" })
     #expect(all.filter { $0.type == BookmarkType.hymns }.count == 49)
-    #expect(BookmarkRemovals.all(defaults: defaults)["prayers|test-one"] != nil)
+    #expect(BookmarkRemovals.all(defaults: defaults)["prayers|test-one|prayers-en"] != nil)
 }
 
 @Test func `a saved hymn past fifty drops the oldest hymn`() throws {
@@ -451,7 +457,13 @@ private func addHymn(_ n: Int, to context: ModelContext, at date: Date) {
     let start = Date(timeIntervalSince1970: 1_700_000_000)
     for n in 1...50 { addHymn(n, to: context, at: start.addingTimeInterval(Double(n * 1000))) }
     try context.save()
-    let old = BookmarkDraft(type: BookmarkType.hymns, id: "old", titleSnapshot: "Test hymn old", createdAt: BookmarkSync.milliseconds(start.addingTimeInterval(-5000)))
+    let old = BookmarkDraft(
+        type: BookmarkType.hymns,
+        id: "old",
+        packId: "hymns-en",
+        titleSnapshot: "Test hymn old",
+        createdAt: BookmarkSync.milliseconds(start.addingTimeInterval(-5000))
+    )
 
     try BookmarkSync.merge([old], into: context, defaults: defaults)
     #expect(try context.fetch(FetchDescriptor<Bookmark>()).count == 50)
@@ -468,7 +480,13 @@ private func addHymn(_ n: Int, to context: ModelContext, at date: Date) {
     let defaults = try freshDefaults()
     let start = Date(timeIntervalSince1970: 1_700_000_000)
     let rows = (1...60).map {
-        BookmarkDraft(type: BookmarkType.hymns, id: "h\($0)", titleSnapshot: "Test hymn \($0)", createdAt: BookmarkSync.milliseconds(start.addingTimeInterval(Double($0 * 1000))))
+        BookmarkDraft(
+            type: BookmarkType.hymns,
+            id: "h\($0)",
+            packId: "hymns-en",
+            titleSnapshot: "Test hymn \($0)",
+            createdAt: BookmarkSync.milliseconds(start.addingTimeInterval(Double($0 * 1000)))
+        )
     }
     try BookmarkSync.merge(rows, into: context, defaults: defaults)
     let ids = Set(try context.fetch(FetchDescriptor<Bookmark>()).map(\.itemId))

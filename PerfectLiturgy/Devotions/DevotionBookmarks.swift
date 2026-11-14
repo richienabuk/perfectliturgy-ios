@@ -7,14 +7,13 @@ struct LocatedDevotion: Equatable, Sendable {
 
 /// Finds where a saved prayer or litany is on this device.
 enum DevotionBookmarks {
-    /// The language the reader has open now comes first, so a saved item opens where the reader is
-    /// and the language choice stays as it was. Next is the language it was saved in.
-    /// A row from the account has no language, so the installed packs are tried in order.
+    /// Opens the pack the item was saved from. The current UI language is not used.
+    /// A row with no pack language falls back to installed packs in order.
     static func locate(
         type: String,
         id: String,
         language: String,
-        current: String? = nil,
+        packId: String = "",
         installed: Set<String>,
         load: (DevotionKind, String) -> DevotionBody? = { kind, code in
             DevotionReader.load(kind, language: code)
@@ -23,7 +22,11 @@ enum DevotionBookmarks {
         guard let kind = DevotionKind(rawValue: type), kind == .prayers || kind == .litanies else {
             return nil
         }
-        for code in languages(preferred: language, current: current, type: type, installed: installed) {
+        let preferred = language.isEmpty
+            ? BookmarkType.languageCode(packId: packId, type: type)
+            : language
+        for code in languages(preferred: preferred, type: type, installed: installed) {
+            guard installed.contains("\(type)-\(code)") else { continue }
             guard let body = load(kind, code) else { continue }
             switch body {
             case .prayers(_, let prayers):
@@ -41,19 +44,16 @@ enum DevotionBookmarks {
         return nil
     }
 
-    private static func languages(preferred: String, current: String?, type: String, installed: Set<String>) -> [String] {
+    private static func languages(preferred: String, type: String, installed: Set<String>) -> [String] {
         var order: [String] = []
         func add(_ code: String) {
             if !code.isEmpty, !order.contains(code) { order.append(code) }
-        }
-        let prefix = "\(type)-"
-        if let current, installed.contains(prefix + current) {
-            add(current)
         }
         if !preferred.isEmpty {
             add(preferred)
             return order
         }
+        let prefix = "\(type)-"
         let others = installed.compactMap { pack -> String? in
             guard pack.hasPrefix(prefix) else { return nil }
             let code = String(pack.dropFirst(prefix.count))

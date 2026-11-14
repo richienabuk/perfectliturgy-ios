@@ -83,7 +83,12 @@ import UIKit
     #expect(SavedRows.emptyNote(signedIn: true) == "Save a hymn, a prayer, or a litany from its page. It syncs with your Account when you're online.")
     #expect(SavedRows.detail(language: "en", massParts: []) == "English Hymns")
 
-    try Bookmarks.remove(type: BookmarkType.hymns, id: hymn.id, in: context)
+    try Bookmarks.remove(
+        type: BookmarkType.hymns,
+        id: hymn.id,
+        packId: ContentPack.hymnID(for: hymn.language),
+        in: context
+    )
     #expect(try context.fetch(FetchDescriptor<Bookmark>()).isEmpty)
 }
 
@@ -233,6 +238,7 @@ import UIKit
     #expect(stored.map(\.itemId) == ["saints", "test-one"])
     #expect(stored.map(\.titleSnapshot) == ["Test litany one", "Test prayer one"])
     #expect(stored.map(\.language) == ["la", "en"])
+    #expect(stored.map(\.packId) == ["litanies-la", "prayers-en"])
 
     let prayer = try #require(stored.first { $0.itemId == "test-one" })
     let open = SavedRows.devotionRow(
