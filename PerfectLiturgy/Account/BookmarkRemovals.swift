@@ -15,7 +15,7 @@ nonisolated enum BookmarkRemovals {
     static let storageKey = "bookmarks.removed"
     private static let limit = 500
 
-    /// Removal time in milliseconds, keyed by `type|id`.
+    /// Removal time in milliseconds, keyed by `type|id|packId`.
     static func all(defaults: UserDefaults = .standard) -> [String: Int64] {
         load(defaults: defaults).mapValues(\.deletedAt)
     }
@@ -27,7 +27,7 @@ nonisolated enum BookmarkRemovals {
 
     static func mark(_ key: String, at date: Date = .now, defaults: UserDefaults = .standard) {
         var records = load(defaults: defaults)
-        var record = records[key] ?? Record(type: "", id: "", titleSnapshot: "", createdAt: 0, deletedAt: 0)
+        var record = records[key] ?? Record(type: "", id: "", packId: "", titleSnapshot: "", createdAt: 0, deletedAt: 0)
         record.deletedAt = milliseconds(date)
         records[key] = record
         save(records, defaults: defaults)
@@ -38,6 +38,7 @@ nonisolated enum BookmarkRemovals {
         records[draft.key] = Record(
             type: draft.type,
             id: draft.id,
+            packId: draft.packId,
             titleSnapshot: draft.titleSnapshot,
             createdAt: draft.createdAt,
             deletedAt: draft.deletedAt ?? milliseconds(date)
@@ -58,15 +59,17 @@ nonisolated enum BookmarkRemovals {
     private struct Record {
         var type: String
         var id: String
+        var packId: String
         var titleSnapshot: String
         var createdAt: Int64
         var deletedAt: Int64
 
         var draft: BookmarkDraft? {
-            guard !type.isEmpty, !id.isEmpty else { return nil }
+            guard !type.isEmpty, !id.isEmpty, !packId.isEmpty else { return nil }
             return BookmarkDraft(
                 type: type,
                 id: id,
+                packId: packId,
                 titleSnapshot: titleSnapshot,
                 createdAt: createdAt,
                 deletedAt: deletedAt
@@ -79,15 +82,26 @@ nonisolated enum BookmarkRemovals {
         var records: [String: Record] = [:]
         for (key, value) in stored {
             if let row = value as? [String: Any] {
-                records[key] = Record(
-                    type: row["type"] as? String ?? "",
-                    id: row["id"] as? String ?? "",
+                let type = row["type"] as? String ?? ""
+                let id = row["id"] as? String ?? ""
+                var packId = row["packId"] as? String ?? ""
+                if packId.isEmpty, let language = row["language"] as? String, !language.isEmpty, !type.isEmpty {
+                    packId = BookmarkType.packId(type: type, language: language)
+                }
+                // Older keys were `type|id`. Rebuild under `type|id|packId` when pack is known.
+                let storedKey = packId.isEmpty || type.isEmpty || id.isEmpty
+                    ? key
+                    : BookmarkType.key(type: type, id: id, packId: packId)
+                records[storedKey] = Record(
+                    type: type,
+                    id: id,
+                    packId: packId,
                     titleSnapshot: row["titleSnapshot"] as? String ?? "",
                     createdAt: integer(row["createdAt"]) ?? 0,
                     deletedAt: integer(row["deletedAt"]) ?? 0
                 )
             } else if let deletedAt = integer(value) {
-                records[key] = Record(type: "", id: "", titleSnapshot: "", createdAt: 0, deletedAt: deletedAt)
+                records[key] = Record(type: "", id: "", packId: "", titleSnapshot: "", createdAt: 0, deletedAt: deletedAt)
             }
         }
         return records
@@ -103,6 +117,7 @@ nonisolated enum BookmarkRemovals {
             [
                 "type": record.type,
                 "id": record.id,
+                "packId": record.packId,
                 "titleSnapshot": record.titleSnapshot,
                 "createdAt": NSNumber(value: record.createdAt),
                 "deletedAt": NSNumber(value: record.deletedAt),

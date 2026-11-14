@@ -139,7 +139,13 @@ struct LitaniesView: View {
     }
 
     private func isSaved(_ id: String) -> Bool {
-        saved.contains { $0.type == BookmarkType.litanies && $0.itemId == id }
+        guard let language = choice.active else { return false }
+        return Bookmarks.isSaved(
+            type: BookmarkType.litanies,
+            id: id,
+            packId: BookmarkType.packId(type: BookmarkType.litanies, language: language),
+            in: saved
+        )
     }
 
     private func toggle(_ litany: Litany) {
@@ -220,7 +226,8 @@ struct LitanyView: View {
     }
 
     private func litanyBody(_ litany: Litany) -> some View {
-        let isSaved = saved.contains { $0.type == BookmarkType.litanies && $0.itemId == litany.id }
+        let packId = choice.active.map { BookmarkType.packId(type: BookmarkType.litanies, language: $0) } ?? ""
+        let isSaved = Bookmarks.isSaved(type: BookmarkType.litanies, id: litany.id, packId: packId, in: saved)
         return VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 8) {

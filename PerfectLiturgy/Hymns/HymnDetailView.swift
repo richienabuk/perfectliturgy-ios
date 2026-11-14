@@ -81,7 +81,12 @@ struct HymnDetailView: View {
     }
 
     private func detail(_ hymn: HymnPage) -> some View {
-        let saved = Bookmarks.isSaved(type: BookmarkType.hymns, id: hymn.id, in: bookmarks)
+        let saved = Bookmarks.isSaved(
+            type: BookmarkType.hymns,
+            id: hymn.id,
+            packId: ContentPack.hymnID(for: hymn.language),
+            in: bookmarks
+        )
         let wide = !showsChrome
         let tablet = isWide && showsChrome
         let titleSize = max(readingScale.size(for: .partTitle), wide ? 40 : 34)

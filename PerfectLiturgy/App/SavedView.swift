@@ -35,7 +35,10 @@ enum SavedRows {
     /// An installed hymn opens. A missing hymn keeps the stored title and stays closed.
     static func hymnRow(bookmark: Bookmark, hymn: HymnRecord?, installed: Set<String>, catalogues: [PackRecord] = PackSeed.rows) -> SavedRow {
         let language = hymn?.language ?? bookmark.language
-        let packInstalled = !language.isEmpty && installed.contains(ContentPack.hymnID(for: language))
+        let packId = bookmark.packId.isEmpty
+            ? (language.isEmpty ? "" : ContentPack.hymnID(for: language))
+            : bookmark.packId
+        let packInstalled = !packId.isEmpty && installed.contains(packId)
         if let hymn, packInstalled {
             return SavedRow(
                 id: bookmark.key,
@@ -48,7 +51,7 @@ enum SavedRows {
                 language: hymn.language
             )
         }
-        let message = if language.isEmpty || packInstalled {
+        let message = if packId.isEmpty || packInstalled {
             "Not on this device"
         } else {
             "Hymn pack removed from this device"
@@ -56,16 +59,18 @@ enum SavedRows {
         return closedRow(bookmark, detail: message, language: language)
     }
 
-    /// An installed prayer or litany opens in the language it was saved in.
+    /// An installed prayer or litany opens in the pack it was saved from.
     static func devotionRow(
         bookmark: Bookmark,
         located: LocatedDevotion?,
         installed: Set<String>,
         catalogues: [PackRecord] = PackSeed.rows
     ) -> SavedRow {
-        let packInstalled = !bookmark.language.isEmpty && installed.contains("\(bookmark.type)-\(bookmark.language)")
-        let locatedInstalled = located.map { installed.contains("\(bookmark.type)-\($0.language)") } ?? false
-        if let located, bookmark.language.isEmpty || packInstalled || locatedInstalled {
+        let packId = bookmark.packId.isEmpty
+            ? (bookmark.language.isEmpty ? "" : BookmarkType.packId(type: bookmark.type, language: bookmark.language))
+            : bookmark.packId
+        let packInstalled = !packId.isEmpty && installed.contains(packId)
+        if let located, packId.isEmpty || packInstalled {
             let name = PackLanguages.language(code: located.language, type: bookmark.type, in: catalogues).packName
             return SavedRow(
                 id: bookmark.key,
@@ -78,7 +83,7 @@ enum SavedRows {
                 language: located.language
             )
         }
-        let message = if bookmark.language.isEmpty || packInstalled {
+        let message = if packId.isEmpty || packInstalled {
             "Not on this device"
         } else if bookmark.type == BookmarkType.prayers {
             "Prayer pack removed from this device"
@@ -167,7 +172,6 @@ enum SavedRows {
 /// A bookmark just removed from Saved, kept for a few seconds so Undo can put it back.
 private struct RemovedBookmark: Equatable {
     var draft: BookmarkDraft
-    var language: String
     var title: String
 }
 
@@ -267,7 +271,7 @@ struct SavedView: View {
                     type: bookmark.type,
                     id: bookmark.itemId,
                     language: bookmark.language,
-                    current: selection.openCode(forBookmarkType: bookmark.type),
+                    packId: bookmark.packId,
                     installed: packs.ids
                 )
             },
@@ -328,13 +332,13 @@ struct SavedView: View {
     /// Removes the bookmark and offers Undo for a few seconds.
     private func remove(_ row: SavedRow) {
         guard let bookmark = bookmarks.first(where: { $0.key == row.id }) else { return }
-        let removed = (draft: Bookmarks.draft(of: bookmark), language: bookmark.language)
+        let draft = Bookmarks.draft(of: bookmark)
         do {
-            try Bookmarks.remove(type: row.type, id: row.itemId, in: modelContext)
+            try Bookmarks.remove(type: row.type, id: row.itemId, packId: bookmark.packId, in: modelContext)
         } catch {
             return
         }
-        undo = RemovedBookmark(draft: removed.draft, language: removed.language, title: row.title)
+        undo = RemovedBookmark(draft: draft, title: row.title)
         AccessibilityNotification.Announcement("Removed \(row.title). Undo is available.").post()
         undoTimer?.cancel()
         undoTimer = Task { @MainActor in
@@ -348,7 +352,7 @@ struct SavedView: View {
         guard let removed = undo else { return }
         undoTimer?.cancel()
         undo = nil
-        try? Bookmarks.restore(removed.draft, language: removed.language, in: modelContext)
+        try? Bookmarks.restore(removed.draft, in: modelContext)
     }
 
     private func undoBar(_ removed: RemovedBookmark) -> some View {

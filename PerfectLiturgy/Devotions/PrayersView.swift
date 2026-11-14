@@ -145,7 +145,13 @@ struct PrayersView: View {
     }
 
     private func isSaved(_ id: String) -> Bool {
-        saved.contains { $0.type == BookmarkType.prayers && $0.itemId == id }
+        guard let language = choice.active else { return false }
+        return Bookmarks.isSaved(
+            type: BookmarkType.prayers,
+            id: id,
+            packId: BookmarkType.packId(type: BookmarkType.prayers, language: language),
+            in: saved
+        )
     }
 
     private func toggle(_ prayer: SpecialPrayer) {
@@ -226,7 +232,8 @@ struct PrayerView: View {
     }
 
     private func prayerBody(_ prayer: SpecialPrayer) -> some View {
-        let isSaved = saved.contains { $0.type == BookmarkType.prayers && $0.itemId == prayer.id }
+        let packId = choice.active.map { BookmarkType.packId(type: BookmarkType.prayers, language: $0) } ?? ""
+        let isSaved = Bookmarks.isSaved(type: BookmarkType.prayers, id: prayer.id, packId: packId, in: saved)
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 8) {
                 ReadingText(text: prayer.title, role: DevotionText.part)

@@ -270,7 +270,7 @@ struct TodayView: View {
                     type: bookmark.type,
                     id: bookmark.itemId,
                     language: bookmark.language,
-                    current: selection.openCode(forBookmarkType: bookmark.type),
+                    packId: bookmark.packId,
                     installed: packs.ids
                 )
             },

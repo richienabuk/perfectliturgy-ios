@@ -185,10 +185,10 @@ import UIKit
     {"user":{"id":"user_1","email":"ada@example.com","name":"Ada"},"session":{"token":"session-1"}}
     """.utf8))
     script.enqueue(status: 200, body: Data("""
-    {"data":[{"type":"hymns","id":"local-hymn","titleSnapshot":"Test hymn one","createdAt":1729000000000},{"type":"hymns","id":"remote-hymn","titleSnapshot":"Test hymn two","createdAt":1729000001000}],"page":1,"pageSize":2,"total":2}
+    {"data":[{"type":"hymns","id":"local-hymn","packId":"hymns-en","titleSnapshot":"Test hymn one","createdAt":1729000000000},{"type":"hymns","id":"remote-hymn","packId":"hymns-en","titleSnapshot":"Test hymn two","createdAt":1729000001000}],"page":1,"pageSize":2,"total":2}
     """.utf8))
     script.enqueue(status: 200, body: Data("""
-    {"data":[{"type":"hymns","id":"local-hymn","titleSnapshot":"Server title","createdAt":1729000000000},{"type":"hymns","id":"remote-hymn","titleSnapshot":"Test hymn two","createdAt":1729000001000}],"page":1,"pageSize":2,"total":2}
+    {"data":[{"type":"hymns","id":"local-hymn","packId":"hymns-en","titleSnapshot":"Server title","createdAt":1729000000000},{"type":"hymns","id":"remote-hymn","packId":"hymns-en","titleSnapshot":"Test hymn two","createdAt":1729000001000}],"page":1,"pageSize":2,"total":2}
     """.utf8))
 
     let defaults = try #require(UserDefaults(suiteName: "merge-\(UUID().uuidString)"))
@@ -207,12 +207,14 @@ import UIKit
     let sent = try JSONDecoder().decode([BookmarkDraft].self, from: put.httpBody ?? Data())
     #expect(sent.map(\.type) == ["hymns"])
     #expect(sent.map(\.id) == ["local-hymn"])
+    #expect(sent.map(\.packId) == ["hymns-en"])
     #expect(sent.map(\.titleSnapshot) == ["Test hymn one"])
     #expect(sent.map(\.createdAt) == [1_729_000_000_000])
     #expect(put.value(forHTTPHeaderField: "Authorization") == "Bearer from-link")
 
     let stored = try context.fetch(FetchDescriptor<Bookmark>()).sorted { $0.itemId < $1.itemId }
     #expect(stored.map(\.itemId) == ["local-hymn", "remote-hymn"])
+    #expect(stored.map(\.packId) == ["hymns-en", "hymns-en"])
     #expect(stored.first { $0.itemId == "local-hymn" }?.titleSnapshot == "Test hymn one")
 
     let failing = AuthScript()
@@ -244,10 +246,10 @@ import UIKit
     {"user":{"id":"user_1","email":"ada@example.com","name":"Ada"},"session":{"token":"session-1"}}
     """.utf8))
     script.enqueue(status: 200, body: Data("""
-    {"data":[{"type":"prayers","id":"test-one","titleSnapshot":"Test prayer one","createdAt":1729000000000},{"type":"litanies","id":"saints","titleSnapshot":"Test litany one","createdAt":1729000001000}],"page":1,"pageSize":2,"total":2}
+    {"data":[{"type":"prayers","id":"test-one","packId":"prayers-en","titleSnapshot":"Test prayer one","createdAt":1729000000000},{"type":"litanies","id":"saints","packId":"litanies-en","titleSnapshot":"Test litany one","createdAt":1729000001000}],"page":1,"pageSize":2,"total":2}
     """.utf8))
     script.enqueue(status: 200, body: Data("""
-    {"data":[{"type":"prayers","id":"test-one","titleSnapshot":"Test prayer one","createdAt":1729000000000},{"type":"litanies","id":"saints","titleSnapshot":"Test litany one","createdAt":1729000001000}],"page":1,"pageSize":2,"total":2}
+    {"data":[{"type":"prayers","id":"test-one","packId":"prayers-en","titleSnapshot":"Test prayer one","createdAt":1729000000000},{"type":"litanies","id":"saints","packId":"litanies-en","titleSnapshot":"Test litany one","createdAt":1729000001000}],"page":1,"pageSize":2,"total":2}
     """.utf8))
 
     let defaults = try #require(UserDefaults(suiteName: "merge-devotion-\(UUID().uuidString)"))
@@ -262,16 +264,19 @@ import UIKit
     let sent = try JSONDecoder().decode([BookmarkDraft].self, from: put.httpBody ?? Data())
     #expect(sent.map(\.type) == ["prayers"])
     #expect(sent.map(\.id) == ["test-one"])
+    #expect(sent.map(\.packId) == ["prayers-en"])
     #expect(sent.map(\.titleSnapshot) == ["Test prayer one"])
     #expect(sent.map(\.createdAt) == [1_729_000_000_000])
     let fields = try #require(JSONSerialization.jsonObject(with: put.httpBody ?? Data()) as? [[String: Any]])
     #expect(fields.first?["hymnId"] == nil)
+    #expect(fields.first?["packId"] as? String == "prayers-en")
 
     let stored = try context.fetch(FetchDescriptor<Bookmark>()).sorted { $0.itemId < $1.itemId }
     #expect(stored.map(\.type) == ["litanies", "prayers"])
     #expect(stored.map(\.itemId) == ["saints", "test-one"])
     #expect(stored.first { $0.itemId == "test-one" }?.titleSnapshot == "Test prayer one")
-    #expect(stored.first { $0.itemId == "saints" }?.language == "")
+    #expect(stored.first { $0.itemId == "saints" }?.packId == "litanies-en")
+    #expect(stored.first { $0.itemId == "saints" }?.language == "en")
 }
 
 @Test func `a gated pack downloads only while signed in and sign-out leaves the body`() async throws {

@@ -17,27 +17,52 @@ nonisolated enum BookmarkType {
     static let hymns = "hymns"
     static let prayers = "prayers"
     static let litanies = "litanies"
+    /// Clients cap the title kept for a missing item.
+    static let titleLimit = 200
 
-    static func key(type: String, id: String) -> String {
-        "\(type)|\(id)"
+    /// Account and device identity: type, item id, and the pack it was saved from.
+    static func key(type: String, id: String, packId: String) -> String {
+        "\(type)|\(id)|\(packId)"
+    }
+
+    static func packId(type: String, language: String) -> String {
+        "\(type)-\(language)"
+    }
+
+    /// Language code from a catalog pack id such as `litanies-ig`.
+    static func languageCode(packId: String, type: String) -> String {
+        let prefix = "\(type)-"
+        if packId.hasPrefix(prefix) {
+            return String(packId.dropFirst(prefix.count))
+        }
+        guard let tail = packId.split(separator: "-").last else { return "" }
+        let code = String(tail)
+        return code == packId ? "" : code
+    }
+
+    static func clippedTitle(_ title: String) -> String {
+        String(title.prefix(titleLimit))
     }
 }
 
 nonisolated struct BookmarkDraft: Equatable, Sendable {
     var type: String
     var id: String
+    /// Catalog pack the item was saved from (`hymns-en`, `litanies-ig`, …).
+    var packId: String
     var titleSnapshot: String
     var createdAt: Int64
     /// Milliseconds since epoch when this device, or the account, removed the item. Nil while it is saved.
     var deletedAt: Int64? = nil
 
-    var key: String { BookmarkType.key(type: type, id: id) }
+    var key: String { BookmarkType.key(type: type, id: id, packId: packId) }
 }
 
 extension BookmarkDraft: Codable {
     private enum CodingKeys: String, CodingKey {
         case type
         case id
+        case packId
         case titleSnapshot
         case createdAt
         case deletedAt
@@ -47,6 +72,7 @@ extension BookmarkDraft: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         type = try container.decode(String.self, forKey: .type)
         id = try container.decode(String.self, forKey: .id)
+        packId = try container.decodeIfPresent(String.self, forKey: .packId) ?? ""
         titleSnapshot = try container.decodeIfPresent(String.self, forKey: .titleSnapshot) ?? ""
         createdAt = try Self.milliseconds(in: container, forKey: .createdAt) ?? 0
         deletedAt = try Self.milliseconds(in: container, forKey: .deletedAt)
@@ -56,6 +82,7 @@ extension BookmarkDraft: Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(type, forKey: .type)
         try container.encode(id, forKey: .id)
+        try container.encode(packId, forKey: .packId)
         try container.encode(titleSnapshot, forKey: .titleSnapshot)
         try container.encode(createdAt, forKey: .createdAt)
         // Null clears a removal. Omitting the key would leave the account row saved.
@@ -353,9 +380,11 @@ private struct BookmarkPage {
 enum BookmarkSync {
     /// Saved rows, then removals the account has not been told about. A saved row wins over a removal of the same item.
     static func payload(_ bookmarks: [Bookmark], defaults: UserDefaults = .standard) -> [BookmarkDraft] {
-        let saved = bookmarks.map(Bookmarks.draft(of:))
+        let saved = bookmarks.map(Bookmarks.draft(of:)).filter { !$0.packId.isEmpty }
         let savedKeys = Set(saved.map(\.key))
-        let removed = BookmarkRemovals.pending(defaults: defaults).filter { !savedKeys.contains($0.key) }
+        let removed = BookmarkRemovals.pending(defaults: defaults).filter {
+            !$0.packId.isEmpty && !savedKeys.contains($0.key)
+        }
         return saved + removed
     }
 
@@ -371,12 +400,13 @@ enum BookmarkSync {
         into context: ModelContext,
         defaults: UserDefaults = .standard
     ) throws {
+        try BookmarkMigration.backfillPackIds(in: context)
         var stored: [String: Bookmark] = [:]
         for bookmark in try context.fetch(FetchDescriptor<Bookmark>()) {
             stored[bookmark.key] = bookmark
         }
         var removals = BookmarkRemovals.all(defaults: defaults)
-        for row in remote where !row.type.isEmpty && !row.id.isEmpty {
+        for row in remote where !row.type.isEmpty && !row.id.isEmpty && !row.packId.isEmpty {
             if let deletedAt = row.deletedAt {
                 let savedAt = stored[row.key].map { milliseconds($0.createdAt) }
                 if let savedAt, savedAt > deletedAt {
@@ -404,7 +434,7 @@ enum BookmarkSync {
                 type: row.type,
                 itemId: row.id,
                 titleSnapshot: row.titleSnapshot,
-                language: "",
+                packId: row.packId,
                 createdAt: Date(timeIntervalSince1970: Double(row.createdAt) / 1000)
             )
             context.insert(bookmark)

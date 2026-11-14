@@ -61,7 +61,7 @@ Import bundled hymns into SwiftData once. A second launch does not insert the sa
 
 Search key is the accent-folded lowercase join of title, first line, and lyrics. Folding strips combining marks. Display text stays as stored.
 
-**Bookmark.** One table for every type, in the shape the account sends. `type` is `hymns`, `prayers`, or `litanies`. `id` is that item's id. `titleSnapshot` and `createdAt` are stored with it. The key is `type|id`. The device also keeps the language code. A bookmark stays when its language pack is removed. Its row is greyed and does not open. Newest first. The device keeps at most 50 saved items across hymns, prayers, and litanies. Saving a 51st drops the oldest one (first in, first out), and a dropped item is not brought back by sync. `PUT` and `GET /v1/bookmarks` send `type`, `id`, `titleSnapshot`, `createdAt`, and `deletedAt` in milliseconds. `deletedAt` is null while the item is saved. A removal sends the same row with `deletedAt` set. The account keeps that row so other devices drop it. This device drops a row when `deletedAt` is set and the local save is not newer.
+**Bookmark.** One table for every type, in the shape the account sends. `type` is `hymns`, `prayers`, or `litanies`. `id` is that item's id. `packId` is the catalog pack it was saved from (`hymns-en`, `litanies-ig`, …). `titleSnapshot` and `createdAt` are stored with it. The key is `type|id|packId`. The device also keeps the language code derived from `packId`. Opening a bookmark uses that pack, not the current UI language. A bookmark stays when its language pack is removed. Its row is greyed and does not open. Newest first. The device keeps at most 50 saved items across hymns, prayers, and litanies. Saving a 51st drops the oldest one (first in, first out), and a dropped item is not brought back by sync. `PUT` and `GET /v1/bookmarks` send `type`, `id`, `packId`, `titleSnapshot`, `createdAt`, and `deletedAt` in milliseconds. `deletedAt` is null while the item is saved. A removal sends the same row with `deletedAt` set. The account keeps that row so other devices drop it. This device drops a row when `deletedAt` is set and the local save is not newer. Clients cap `titleSnapshot` at 200 characters.
 
 **Verse.** Identity is translation, book, chapter, and verse. Store the text once. A tombstone deletes that key. Translation id is the pack id without the `readings-` prefix.
 
@@ -262,7 +262,7 @@ Settings heading "Settings". Support "Set the reading surface to suit you." Appe
 
 Signed-out Account offers Google, Apple, and email magic link. Google, Apple, and magic link use `ASWebAuthenticationSession` with PKCE (`state` + S256 challenge). Apple opens `GET /auth/mobile/start?provider=apple` (same bridge as Google). The return is `perfectliturgy://auth?code=&state=`; exchange via `POST /auth/mobile/token`, then confirm with `GET /api/auth/get-session` and store the token in the Keychain. Native Sign in with Apple is deferred until Managed Auth accepts iPhone idTokens. Signed-in Account shows the name and email, sign-out, sync, and a way to Saved.
 
-After sign-in, `PUT /v1/bookmarks` with the saved rows and the removals, then `GET /v1/bookmarks`, and merge by type and id. A row with `deletedAt` is removed here. A saved row stays.
+After sign-in, `PUT /v1/bookmarks` with the saved rows and the removals, then `GET /v1/bookmarks`, and merge by type, id, and packId. A row with `deletedAt` is removed here. A saved row stays.
 
 ### More
 

@@ -95,24 +95,41 @@ nonisolated final class HymnSectionRecord {
 }
 
 /// A saved hymn, prayer, or litany. One row per item, in the shape the account sends:
-/// `type`, `id`, `titleSnapshot`, `createdAt`. A removal is not a row here. It is kept with
-/// `deletedAt` until the account has it. The key is `type|id`. `language` stays on the device
-/// so a removed pack can still be named.
+/// `type`, `id`, `packId`, `titleSnapshot`, `createdAt`. A removal is not a row here. It is kept
+/// with `deletedAt` until the account has it. The key is `type|id|packId`. `language` stays on
+/// the device so a removed pack can still be named.
 @Model
 final class Bookmark {
     @Attribute(.unique) var key: String
     var type: String
     var itemId: String
+    /// Catalog pack the item was saved from (`hymns-en`, `litanies-ig`, …).
+    var packId: String = ""
     var titleSnapshot: String
+    /// Language code derived from `packId`, kept for rows and hymn retargeting.
     var language: String = ""
     var createdAt: Date
 
-    init(type: String, itemId: String, titleSnapshot: String, language: String = "", createdAt: Date) {
-        self.key = BookmarkType.key(type: type, id: itemId)
+    init(
+        type: String,
+        itemId: String,
+        titleSnapshot: String,
+        packId: String = "",
+        language: String = "",
+        createdAt: Date
+    ) {
+        let resolvedPack = packId.isEmpty && !language.isEmpty
+            ? BookmarkType.packId(type: type, language: language)
+            : packId
+        let resolvedLanguage = language.isEmpty
+            ? BookmarkType.languageCode(packId: resolvedPack, type: type)
+            : language
+        self.key = BookmarkType.key(type: type, id: itemId, packId: resolvedPack)
         self.type = type
         self.itemId = itemId
-        self.titleSnapshot = titleSnapshot
-        self.language = language
+        self.packId = resolvedPack
+        self.titleSnapshot = BookmarkType.clippedTitle(titleSnapshot)
+        self.language = resolvedLanguage
         self.createdAt = createdAt
     }
 }

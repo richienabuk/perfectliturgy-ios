@@ -626,41 +626,42 @@ Verse rows have no `date` and no `display_window`. Every verse in the pack is st
 
 ### `PUT /v1/bookmarks`
 
-Auth: **required**. Merge local saved hymns, prayers, and litanies after sign-in, including removals. The device keeps the 50 newest saved items and drops the oldest. A dropped or removed item is sent with `deletedAt`, so the account does not hand it back as saved.
+Auth: **required**. Merge local saved items after sign-in. A row is one hymn, special prayer, or litany. The device keeps the 50 newest saved items and drops the oldest. A dropped or removed item is sent with `deletedAt`, so the account does not hand it back as saved.
 
-**Body**
+**Body** — JSON array of bookmark rows.
 
-`type` is a slug: `hymns`, `prayers` (special prayers), or `litanies`. `id` is that item's id. `createdAt` and `deletedAt` are milliseconds since epoch. `deletedAt` is `null` while the item is saved, or the client time when it was removed. The account keeps the row either way, so another device can drop it.
+`type` is a slug: `hymns`, `prayers` (special prayers), `litanies`, or any other content slug. `id` is that item's id. Hymn ids are per hymn. Prayer and litany ids are shared across languages. `packId` is the catalog pack the item was saved from (`hymns-en`, `litanies-ig`, …). Opening a bookmark uses that pack, not the current UI language. `createdAt` and `deletedAt` are milliseconds since epoch. `deletedAt` is `null` while the item is saved, or the client time when it was removed. The account keeps the row either way, so another device can drop it. Clients cap `titleSnapshot` at 200 characters. Merge identity is `type` + `id` + `packId`.
 
 ```json
 [
   {
     "type": "hymns",
     "id": "uuid",
-    "titleSnapshot": "Test hymn one",
+    "packId": "hymns-en",
+    "titleSnapshot": "Amazing Grace",
     "createdAt": 1729000000000,
     "deletedAt": null
   },
   {
     "type": "prayers",
-    "id": "uuid",
-    "titleSnapshot": "Test prayer one",
-    "createdAt": 1729000000000,
-    "deletedAt": 1729000005000
+    "id": "our-father",
+    "packId": "prayers-la",
+    "titleSnapshot": "Our Father",
+    "createdAt": 1729000001000
   },
   {
     "type": "litanies",
-    "id": "uuid",
-    "titleSnapshot": "Test litany one",
-    "createdAt": 1729000000000,
-    "deletedAt": null
+    "id": "saints",
+    "packId": "litanies-ig",
+    "titleSnapshot": "Litany of the Saints",
+    "createdAt": 1729000002000
   }
 ]
 ```
 
 ### `GET /v1/bookmarks`
 
-Auth: **required**. List envelope: `{ "data": [ …same bookmark rows… ], "page", "pageSize", "total" }`. Client merges by `type` and `id`. A row with `deletedAt` set is removed on the device when that time is not older than the local save. A saved row the device does not have is inserted. Other local saves stay.
+Auth: **required**. List envelope: `{ "data": [ …same bookmark rows… ], "page", "pageSize", "total" }`. Client merges by `type`, `id`, and `packId`. A row with `deletedAt` set is removed on the device when that time is not older than the local save. A saved row the device does not have is inserted. Other local saves stay.
 
 `PUT` returns the same list envelope after merge.
 

@@ -385,15 +385,23 @@ enum HymnImporter {
         language: String,
         in context: ModelContext
     ) throws {
-        if let bookmark = try Bookmarks.fetch(type: BookmarkType.hymns, id: oldID, in: context) {
+        let packId = ContentPack.hymnID(for: language)
+        if let bookmark = try Bookmarks.fetch(type: BookmarkType.hymns, id: oldID, packId: packId, in: context) {
             let createdAt = bookmark.createdAt
             BookmarkRemovals.mark(Bookmarks.draft(of: bookmark))
             context.delete(bookmark)
-            if let clash = try Bookmarks.fetch(type: BookmarkType.hymns, id: newID, in: context) {
+            if let clash = try Bookmarks.fetch(type: BookmarkType.hymns, id: newID, packId: packId, in: context) {
                 context.delete(clash)
             }
             context.insert(
-                Bookmark(type: BookmarkType.hymns, itemId: newID, titleSnapshot: title, language: language, createdAt: createdAt)
+                Bookmark(
+                    type: BookmarkType.hymns,
+                    itemId: newID,
+                    titleSnapshot: title,
+                    packId: packId,
+                    language: language,
+                    createdAt: createdAt
+                )
             )
         }
         if let visit = try context.fetch(FetchDescriptor<HymnVisit>()).first(where: { $0.hymnId == oldID }) {
@@ -404,7 +412,10 @@ enum HymnImporter {
     }
 
     private static func removeSaved(id: String, in context: ModelContext) throws {
-        if let bookmark = try Bookmarks.fetch(type: BookmarkType.hymns, id: id, in: context) {
+        let matches = try context.fetch(FetchDescriptor<Bookmark>()).filter {
+            $0.type == BookmarkType.hymns && $0.itemId == id
+        }
+        for bookmark in matches {
             BookmarkRemovals.mark(Bookmarks.draft(of: bookmark))
             context.delete(bookmark)
         }
@@ -489,6 +500,11 @@ enum HymnStore {
             try HymnImporter.importBundledIfNeeded(into: container.mainContext)
         } catch {
             logger.error("The bundled hymns could not be imported.")
+        }
+        do {
+            try BookmarkMigration.backfillPackIds(in: container.mainContext)
+        } catch {
+            logger.error("Saved items could not be updated for pack identity.")
         }
         return container
     }
